@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Native Balance Tracker</title>
+<meta name="color-scheme" content="light dark">
+<style>
+:root{
+  --bg:#f6f7fb;--card:#ffffff;--text:#14161c;--muted:#6b7280;--border:#e5e7eb;
+  --accent:#4f46e5;--accent-2:#eef2ff;--err:#dc2626;--err-bg:#fef2f2;--ok:#059669;--row:#fafafa;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#0d0f14;--card:#151821;--text:#e7e9ee;--muted:#8b93a3;--border:#262b36;
+  --accent:#818cf8;--accent-2:#1e2140;--err:#f87171;--err-bg:#2a1515;--ok:#34d399;--row:#181b25;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);}
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;margin-bottom:16px}
+h1{font-size:20px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12.5px}
+.btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--text);padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:3px 8px;font-size:12px;border-radius:6px}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:2px 5px}
+.btn.ghost:hover{color:var(--text);border-color:var(--border)}
+.btn:disabled{opacity:.6;cursor:default}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input[type=text],textarea{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 10px;outline:none}
+input[type=text]:focus,textarea:focus{border-color:var(--accent)}
+textarea{width:100%;min-height:110px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+details>summary{cursor:pointer;font-weight:600;list-style:none;user-select:none}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸ ";color:var(--muted)}
+details[open]>summary::before{content:"▾ "}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:pointer;user-select:none;font-size:12.5px;background:var(--bg)}
+.chip input{margin:0;accent-color:var(--accent)}
+.chip.on{background:var(--accent-2);border-color:var(--accent)}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--card);box-shadow:var(--shadow)}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:600px}
+th,td{padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--card);position:sticky;top:0}
+th .sym{display:block;font-weight:500;font-size:11px;opacity:.8}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card);z-index:1;min-width:210px}
+tbody tr:hover td{background:var(--row)}
+tfoot td{font-weight:600;border-top:2px solid var(--border);border-bottom:none}
+.label{font-weight:600;cursor:text;border-bottom:1px dashed transparent}
+.label:hover{border-bottom-color:var(--muted)}
+.addr{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--muted)}
+.zero{color:var(--muted);opacity:.55}
+.err{color:var(--err);background:var(--err-bg);border-radius:6px;padding:1px 6px;font-size:12px;cursor:help}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:var(--muted)}
+.usd{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.na{color:var(--err)!important;opacity:.85}
+th .sym.na{font-weight:500}
+.usdcol{font-weight:600;border-right:1px solid var(--border)}
+.pricestrip{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 14px;font-size:13px}
+.pp{white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.show{opacity:.95}
+.walletcell{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.walletcell .meta{display:flex;flex-direction:column}
+.status{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{font-size:12px;border:1px solid var(--border);border-radius:999px;padding:2px 8px;color:var(--muted)}
+.pill.bad{color:var(--err);border-color:var(--err)}
+.pill.good{color:var(--ok);border-color:var(--ok)}
+@media (max-width:640px){h1{font-size:18px}th:first-child,td:first-child{min-width:160px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Native Balance Tracker</h1>
+      <div class="sub">Native coin per chain plus its USD value, fetched live on every load. No tokens.</div>
+    </div>
+    <div class="status">
+      <span class="pill" id="updated">Not loaded yet</span>
+      <button class="btn primary" id="refreshBtn" title="Fetch latest balances (R)">⟳ Refresh</button>
+    </div>
+  </header>
+
+  <div class="card pricestrip" id="prices">Prices (USD): loading…</div>
+
+  <div class="card">
+    <details id="manage">
+      <summary>Wallets: add, import, export</summary>
+      <div style="margin-top:12px">
+        <div class="row" style="margin-bottom:12px">
+          <input type="text" id="addLabel" placeholder="Label (optional)" style="width:160px">
+          <input type="text" id="addAddr" placeholder="0x… public address" style="flex:1;min-width:260px;font-family:ui-monospace,monospace">
+          <button class="btn" id="addBtn">+ Add wallet</button>
+        </div>
+        <textarea id="bulk" placeholder="Paste wallets, one per line. Any of these work:
+0xYourWalletAddress
+Main,0xYourWalletAddress
+0xYourWalletAddress Main"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="importBtn">Import pasted list</button>
+          <label class="btn" for="fileIn">Import .txt / .csv file</label>
+          <input type="file" id="fileIn" accept=".txt,.csv,text/plain,text/csv" hidden>
+          <button class="btn" id="exportCsv">Export CSV</button>
+          <button class="btn" id="exportTxt">Copy list</button>
+          <span style="flex:1"></span>
+          <button class="btn" id="clearAll" style="color:var(--err)">Remove all</button>
+        </div>
+        <p class="note" style="margin:10px 0 0">🔒 Only <b>public</b> addresses are needed. Never paste a seed phrase or private key here (or anywhere). Your list is stored only in this browser (localStorage).</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <b>Chains</b>
+      <div class="row">
+        <label class="chip" style="cursor:pointer"><input type="checkbox" id="totalsToggle"> Show totals row</label>
+        <label class="chip" style="cursor:pointer"><input type="checkbox" id="hideZero"> Hide all-zero chains</label>
+      </div>
+    </div>
+    <div class="chips" id="chainChips"></div>
+  </div>
+
+  <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+  <p class="note">Click a label to rename it. Amounts show up to 6 decimals (hover for the full value); the grey line under each is its USD value at the live price. "⚠ error" means every RPC for that chain failed; "price n/a" means no price source answered, so USD is left out (marked *). Nothing is guessed; press Refresh to retry.</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// All native coins use 18 decimals. RPC entries are a URL string, or {url, batch:false} for endpoints whose free tier rejects JSON-RPC batches.
+// ---- Chain config: endpoints verified to return balances + CORS for Origin: null (file://) ----
+const CHAINS = [
+  {id:"eth",    name:"Ethereum",     sym:"ETH",  rpcs:["https://ethereum-rpc.publicnode.com","https://eth.drpc.org","https://1rpc.io/eth"]},
+  {id:"bsc",    name:"BNB Chain",    sym:"BNB",  rpcs:["https://bsc-rpc.publicnode.com","https://bsc-dataseed.bnbchain.org","https://1rpc.io/bnb"]},
+  {id:"base",   name:"Base",         sym:"ETH",  rpcs:["https://base-rpc.publicnode.com","https://mainnet.base.org","https://1rpc.io/base"]},
+  {id:"arb",    name:"Arbitrum One", sym:"ETH",  rpcs:["https://arbitrum-one-rpc.publicnode.com","https://arb1.arbitrum.io/rpc","https://arbitrum.drpc.org"]},
+  {id:"op",     name:"Optimism",     sym:"ETH",  rpcs:["https://optimism-rpc.publicnode.com","https://mainnet.optimism.io","https://1rpc.io/op"]},
+  {id:"pol",    name:"Polygon PoS",  sym:"POL",  rpcs:["https://polygon-bor-rpc.publicnode.com","https://polygon.drpc.org","https://1rpc.io/matic"]},
+  {id:"avax",   name:"Avalanche C",  sym:"AVAX", rpcs:["https://avalanche-c-chain-rpc.publicnode.com","https://api.avax.network/ext/bc/C/rpc","https://1rpc.io/avax/c"]},
+  {id:"scroll", name:"Scroll",       sym:"ETH",  rpcs:["https://scroll-rpc.publicnode.com","https://rpc.scroll.io","https://1rpc.io/scroll"]},
+  {id:"zksync", name:"zkSync Era",   sym:"ETH",  mc:"0xF9cda624FBC7e059355ce98a31693d299FACd963", rpcs:["https://mainnet.era.zksync.io","https://1rpc.io/zksync2-era","https://zksync.drpc.org"]},
+  {id:"linea",  name:"Linea",        sym:"ETH",  rpcs:["https://linea-rpc.publicnode.com","https://rpc.linea.build","https://1rpc.io/linea"]},
+  {id:"gnosis", name:"Gnosis",       sym:"xDAI", rpcs:["https://gnosis-rpc.publicnode.com","https://rpc.gnosischain.com","https://gnosis.drpc.org"]},
+  {id:"abstract",  name:"Abstract",  sym:"ETH",  mc:"0xF9cda624FBC7e059355ce98a31693d299FACd963", rpcs:["https://api.mainnet.abs.xyz","https://abstract.drpc.org",{url:"https://abstract-mainnet.gateway.tatum.io",batch:false}]},
+  {id:"plasma",    name:"Plasma",    sym:"XPL",  rpcs:["https://rpc.plasma.to",{url:"https://plasma-mainnet.gateway.tatum.io",batch:false},{url:"https://plasma.api.onfinality.io/public",batch:false}]},
+  {id:"robinhood", name:"Robinhood Chain", sym:"ETH", rpcs:["https://rpc.mainnet.chain.robinhood.com","https://robinhood-rpc.publicnode.com","https://robinhood.drpc.org"]},
+];
+// ---- USD prices: CoinGecko first, then Coinbase, then Binance (USDT pairs). All free, no key, CORS "*". ----
+const COINS = {
+  ETH:  {cg:"ethereum",                cb:"ETH",  bn:"ETHUSDT"},
+  BNB:  {cg:"binancecoin",             cb:"BNB",  bn:"BNBUSDT"},
+  POL:  {cg:"polygon-ecosystem-token", cb:"POL",  bn:"POLUSDT"},
+  AVAX: {cg:"avalanche-2",             cb:"AVAX", bn:"AVAXUSDT"},
+  xDAI: {cg:"xdai",                    cb:null,   bn:null},
+  XPL:  {cg:"plasma",                  cb:"XPL",  bn:"XPLUSDT"},
+};
+let prices = {};          // sym -> {usd:Number, src:String}
+let priceState = "idle";  // idle | loading | done
+let priceTime = null, priceErrs = [];
+async function getJSON(url){
+  const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 10000);
+  try { const r = await fetch(url, {signal:ctl.signal, cache:"no-store"}); if (!r.ok) throw new Error("HTTP " + r.status); return await r.json(); }
+  catch(e){ throw new Error(e.name === "AbortError" ? "timeout" : (e.message || "network/CORS error")); }
+  finally { clearTimeout(t); }
+}
+const goodPrice = v => typeof v === "number" && isFinite(v) && v > 0;
+async function loadPrices(myRun){
+  priceState = "loading"; priceErrs = []; const next = {};
+  const syms = Object.keys(COINS);
+  const missing = () => syms.filter(k => !next[k]);
+  try {
+    const ids = syms.map(k => COINS[k].cg).join(",");
+    const d = await getJSON("https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=" + ids);
+    for (const k of syms) { const v = d && d[COINS[k].cg] && d[COINS[k].cg].usd; if (goodPrice(v)) next[k] = {usd:v, src:"CoinGecko"}; }
+  } catch(e){ priceErrs.push("CoinGecko: " + e.message); }
+  if (missing().some(k => COINS[k].cb)) try {
+    const d = await getJSON("https://api.coinbase.com/v2/exchange-rates?currency=USD");
+    const rates = d && d.data && d.data.rates || {};
+    for (const k of missing()) { const r = COINS[k].cb && parseFloat(rates[COINS[k].cb]); if (goodPrice(r)) next[k] = {usd:1/r, src:"Coinbase"}; }
+  } catch(e){ priceErrs.push("Coinbase: " + e.message); }
+  const bnNeed = missing().filter(k => COINS[k].bn);
+  if (bnNeed.length) try {
+    const d = await getJSON("https://data-api.binance.vision/api/v3/ticker/price?symbols=" + encodeURIComponent(JSON.stringify(bnNeed.map(k => COINS[k].bn))));
+    for (const k of bnNeed) { const row = Array.isArray(d) && d.find(x => x.symbol === COINS[k].bn); const v = row && parseFloat(row.price); if (goodPrice(v)) next[k] = {usd:v, src:"Binance (USDT)"}; }
+  } catch(e){ priceErrs.push("Binance: " + e.message); }
+  if (myRun !== runId) return;
+  prices = next; priceState = "done"; priceTime = new Date();
+  renderPrices(); renderBody();
+}
+const fmtUsd = v => v === 0 ? "$0" : (v < 0.01 ? "<$0.01" : "$" + v.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2}));
+const fmtPrice = v => "$" + v.toLocaleString("en-US", {maximumFractionDigits: v >= 100 ? 2 : v >= 1 ? 3 : 5});
+const weiUsd = (wei, sym) => prices[sym] ? Number(wei) / 1e18 * prices[sym].usd : null;
+function renderPrices(){
+  const el = $("#prices"); if (!el) return;
+  const syms = [...new Set(CHAINS.filter(c => enabled[c.id]).map(c => c.sym))];
+  if (priceState === "loading" && !Object.keys(prices).length) { el.innerHTML = `Prices (USD): <span class="spin"></span>`; return; }
+  const srcs = [...new Set(Object.values(prices).map(p => p.src))];
+  el.innerHTML = `<b>Prices (USD)</b> ` + syms.map(k => prices[k]
+      ? `<span class="pp" title="${esc(prices[k].src)}">${k} <b>${fmtPrice(prices[k].usd)}</b></span>`
+      : `<span class="pp"><span>${k}</span> <span class="err" title="${esc(priceErrs.join("\n") || "no source had this coin")}">price unavailable</span></span>`).join("")
+    + `<span class="note">${srcs.length ? "via " + esc(srcs.join(", ")) : ""}${priceTime ? " · " + priceTime.toLocaleTimeString() : ""}</span>`;
+}
+
+
+const LS = {wallets:"nbt.wallets.v1", chains:"nbt.chains.v1", opts:"nbt.opts.v1", seeded:"nbt.seeded.v1"};
+const BATCH = 10, TIMEOUT_MS = 12000, DP = 6;
+// Multicall3: one eth_call returns every wallet's native balance on a chain.
+// Verified (eth_getCode + values equal to eth_getBalance) on all 14 chains. zkSync Era and Abstract use the
+// native zkSync deployment (chain.mc); every other chain uses the canonical address below.
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+const MC_CHUNK = 250;          // addresses per eth_call (300 tested OK on every endpoint)
+const MIN_REFRESH_MS = 10000;  // at most one refresh every 10 s
+const STAGGER_MS = 60;         // small gap between chains starting their requests
+
+// ---- State ----
+let wallets = load(LS.wallets, null);
+if (!Array.isArray(wallets)) wallets = [];
+
+localStorage.setItem(LS.seeded, "1");
+let enabled = load(LS.chains, null);
+if (!enabled || typeof enabled !== "object") enabled = Object.fromEntries(CHAINS.map(c => [c.id, true]));
+for (const c of CHAINS) if (!(c.id in enabled)) enabled[c.id] = true;
+let opts = Object.assign({totals:true, hideZero:false}, load(LS.opts, {}));
+// results[chainId][addrLower] = {state:'loading'|'ok'|'err', wei:BigInt, msg}
+let results = {};
+let runId = 0;
+save();
+
+function load(k, d){ try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } }
+function save(){ localStorage.setItem(LS.wallets, JSON.stringify(wallets)); localStorage.setItem(LS.chains, JSON.stringify(enabled)); localStorage.setItem(LS.opts, JSON.stringify(opts)); }
+
+// ---- Helpers ----
+const $ = s => document.querySelector(s);
+const isAddr = a => /^0x[0-9a-fA-F]{40}$/.test(a);
+const short = a => a.slice(0,6) + "…" + a.slice(-4);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1600); }
+function fmtWei(wei, dp=DP){
+  const neg = wei < 0n; if (neg) wei = -wei;
+  if (dp < 18) wei += 5n * 10n ** BigInt(17 - dp); // round half-up to dp
+  const base = 10n**18n, whole = wei / base, frac = wei % base;
+  let f = frac.toString().padStart(18,"0").slice(0,dp).replace(/0+$/,"");
+  const w = whole.toLocaleString("en-US");
+  return (neg?"-":"") + (f ? w + "." + f : w);
+}
+function fullWei(wei){ const base=10n**18n; const f=(wei%base).toString().padStart(18,"0").replace(/0+$/,""); return (wei/base).toString() + (f?"."+f:""); }
+
+// ---- Parsing / import ----
+function parseList(text){
+  const out = []; let bad = 0;
+  for (let line of text.split(/\r?\n/)) {
+    line = line.trim(); if (!line || line.startsWith("#")) continue;
+    const m = line.match(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/);
+    if (!m) { if (!/^label\s*[,;\t]/i.test(line) && !/^address/i.test(line)) bad++; continue; }
+    const address = m[0];
+    let label = (line.slice(0, m.index) + " " + line.slice(m.index + address.length))
+      .replace(/^[\s,;\t|"]+|[\s,;\t|"]+$/g, "").replace(/\s*[,;\t|]\s*/g, " ").replace(/"/g,"").trim();
+    out.push({label, address});
+  }
+  return {items: out, bad};
+}
+function addWallets(items){
+  let added = 0, dup = 0;
+  const seen = new Set(wallets.map(w => w.address.toLowerCase()));
+  for (const it of items) {
+    if (!isAddr(it.address)) continue;
+    const k = it.address.toLowerCase();
+    if (seen.has(k)) { dup++; const w = wallets.find(w=>w.address.toLowerCase()===k); if (it.label && !w.label) w.label = it.label; continue; }
+    seen.add(k); wallets.push({label: (it.label||"").slice(0,60), address: it.address}); added++;
+  }
+  save(); return {added, dup};
+}
+function importText(text){
+  const {items, bad} = parseList(text);
+  const {added, dup} = addWallets(items);
+  toast(`Added ${added}` + (dup?`, ${dup} duplicate${dup>1?"s":""} skipped`:"") + (bad?`, ${bad} invalid line${bad>1?"s":""}`:""));
+  render(); if (added) requestRefresh();
+}
+
+// ---- RPC ----
+async function postJSON(url, body){
+  const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body), signal:ctl.signal, cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } catch(e) { throw new Error(e.name === "AbortError" ? "timeout" : (e.message || "network/CORS error")); }
+  finally { clearTimeout(t); }
+}
+// Returns {got: Map(addrLower -> BigInt), err} for one RPC endpoint
+async function fetchSingles(url, addrs, got){
+  let lastErr = null;
+  // one at a time: free tiers that refuse batches usually also throttle bursts
+  for (const a of addrs) {
+    try { const r = await postJSON(url, {jsonrpc:"2.0", id:1, method:"eth_getBalance", params:[a,"latest"]});
+      if (r && typeof r.result === "string" && /^0x[0-9a-fA-F]+$/.test(r.result)) got.set(a.toLowerCase(), BigInt(r.result));
+      else lastErr = (r && r.error && r.error.message) || "unexpected response"; }
+    catch(e){ lastErr = e.message; }
+  }
+  return lastErr;
+}
+async function fetchBatch(rpc, addrs){
+  const url = typeof rpc === "string" ? rpc : rpc.url;
+  const canBatch = typeof rpc === "string" || rpc.batch !== false;
+  const got = new Map();
+  if (!canBatch || addrs.length === 1) return {got, err: await fetchSingles(url, addrs, got)};
+  const req = addrs.map((a,i) => ({jsonrpc:"2.0", id:i+1, method:"eth_getBalance", params:[a,"latest"]}));
+  let lastErr = null;
+  try {
+    const res = await postJSON(url, req);
+    if (!Array.isArray(res)) lastErr = (res && res.error && res.error.message) || "batch not supported";
+    else for (const r of res) {
+      const a = addrs[(r && r.id) - 1];
+      if (a && typeof r.result === "string" && /^0x[0-9a-fA-F]+$/.test(r.result)) got.set(a.toLowerCase(), BigInt(r.result));
+      else if (r && r.error) lastErr = r.error.message || "RPC error";
+    }
+  } catch(e){ lastErr = e.message; }
+  // Batch rejected entirely (some free tiers): retry one by one on the same endpoint
+  if (got.size === 0) { const e2 = await fetchSingles(url, addrs, got); if (got.size) lastErr = e2; else lastErr = lastErr || e2; }
+  return {got, err: got.size === addrs.length ? null : lastErr};
+}
+const pad32 = h => h.replace(/^0x/, "").toLowerCase().padStart(64, "0");
+// ABI-encode aggregate3((address target,bool allowFailure,bytes callData)[]) of getEthBalance(addr) calls
+function encodeAggregate3(mc, addrs){
+  const elems = addrs.map(a => pad32(mc) + pad32("1") + pad32("60") + pad32("24") + "4d2301cc" + pad32(a) + "0".repeat(56));
+  let off = addrs.length * 32; const heads = [];
+  for (const e of elems) { heads.push(pad32(off.toString(16))); off += e.length / 2; }
+  return "0x82ad56cb" + pad32("20") + pad32(addrs.length.toString(16)) + heads.join("") + elems.join("");
+}
+// Decode (bool success, bytes returnData)[]; returns BigInt or null per entry
+function decodeAggregate3(hex, n){
+  const d = hex.replace(/^0x/, ""); const w = i => d.slice(i*64, i*64 + 64); const num = i => parseInt(w(i), 16);
+  if (d.length < 128 || num(1) !== n) throw new Error("bad multicall response");
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const o = (num(2 + i) + 64) / 32;                 // tuple start (in words)
+    const ok = BigInt("0x" + w(o)) === 1n;
+    const b = o + num(o + 1) / 32;                     // bytes start
+    out.push(ok && num(b) === 32 ? BigInt("0x" + w(b + 1)) : null);
+  }
+  return out;
+}
+async function fetchMulticall(rpc, chain, addrs){
+  const url = typeof rpc === "string" ? rpc : rpc.url;
+  const mc = chain.mc || MULTICALL3;
+  const got = new Map();
+  try {
+    const r = await postJSON(url, {jsonrpc:"2.0", id:1, method:"eth_call", params:[{to: mc, data: encodeAggregate3(mc, addrs)}, "latest"]});
+    if (!r || typeof r.result !== "string") return {got, err: (r && r.error && r.error.message) || "unexpected response"};
+    decodeAggregate3(r.result, addrs.length).forEach((v, i) => { if (v !== null) got.set(addrs[i].toLowerCase(), v); });
+    return {got, err: got.size === addrs.length ? null : "some entries failed"};
+  } catch(e){ return {got, err: e.message}; }
+}
+async function loadChain(chain, addrs, myRun){
+  let pending = addrs.slice(); const errs = [];
+  // 1) Multicall3: ~1 request per chain per 250 wallets, trying endpoints in fallback order
+  if (chain.multicall !== false) {
+    for (const url of chain.rpcs) {
+      if (!pending.length) break;
+      const chunks = []; for (let i=0;i<pending.length;i+=MC_CHUNK) chunks.push(pending.slice(i,i+MC_CHUNK));
+      const outs = await Promise.all(chunks.map(c => fetchMulticall(url, chain, c)));
+      if (myRun !== runId) return;
+      const host = new URL(typeof url === "string" ? url : url.url).host;
+      for (const o of outs) { for (const [k,v] of o.got) results[chain.id][k] = {state:"ok", wei:v, via:host + ", multicall"}; if (o.err) errs.push(host + " (multicall): " + o.err); }
+      pending = pending.filter(a => results[chain.id][a.toLowerCase()].state !== "ok");
+      renderBody();
+    }
+  }
+  // 2) Fallback: batched eth_getBalance for anything multicall did not return
+  for (let attempt = 0; attempt < 2 && pending.length; attempt++) {
+  if (attempt) { await new Promise(r => setTimeout(r, 1200 + Math.random()*800)); if (myRun !== runId) return; }
+  for (const url of chain.rpcs) {
+    if (!pending.length) break;
+    const chunks = []; for (let i=0;i<pending.length;i+=BATCH) chunks.push(pending.slice(i,i+BATCH));
+    const outs = await Promise.all(chunks.map(c => fetchBatch(url, c)));
+    if (myRun !== runId) return;
+    const host = new URL(typeof url === "string" ? url : url.url).host;
+    for (const o of outs) { for (const [k,v] of o.got) results[chain.id][k] = {state:"ok", wei:v, via:host}; if (o.err) errs.push(host + ": " + o.err); }
+    pending = pending.filter(a => results[chain.id][a.toLowerCase()].state !== "ok");
+    renderBody();
+  }
+  }
+  for (const a of pending) results[chain.id][a.toLowerCase()] = {state:"err", msg: errs.join("\n") || "all RPCs failed"};
+  renderBody();
+}
+let lastRefreshAt = 0, refreshTimer = null, loading = false;
+// Rate-limited entry point for the button, R key, and wallet changes
+function requestRefresh(){
+  const wait = lastRefreshAt + MIN_REFRESH_MS - Date.now();
+  if (wait <= 0 && !loading) { clearTimeout(refreshTimer); refreshTimer = null; refresh(); return; }
+  if (!refreshTimer) { refreshTimer = setTimeout(() => { refreshTimer = null; requestRefresh(); }, Math.max(wait, 500)); toast(`Refreshing in ${Math.ceil(Math.max(wait,500)/1000)} s (max once every ${MIN_REFRESH_MS/1000} s)`); }
+}
+function updateRefreshBtn(){
+  const b = $("#refreshBtn"); const wait = lastRefreshAt + MIN_REFRESH_MS - Date.now();
+  if (loading) { b.disabled = true; b.textContent = "⟳ Loading…"; }
+  else if (wait > 0) { b.disabled = true; b.textContent = `⟳ Refresh (${Math.ceil(wait/1000)})`; }
+  else { b.disabled = false; b.textContent = "⟳ Refresh"; }
+}
+setInterval(updateRefreshBtn, 500);
+async function refresh(){
+  const myRun = ++runId;
+  lastRefreshAt = Date.now(); loading = true; updateRefreshBtn();
+  const addrs = wallets.map(w => w.address);
+  const active = CHAINS.filter(c => enabled[c.id]);
+  results = {};
+  for (const c of CHAINS) { results[c.id] = {}; for (const a of addrs) results[c.id][a.toLowerCase()] = {state: enabled[c.id] ? "loading" : "idle"}; }
+  $("#updated").className = "pill"; $("#updated").textContent = "Loading…";
+  renderBody();
+  renderPrices();
+  const stagger = (c, i) => new Promise(r => setTimeout(r, i * STAGGER_MS)).then(() => myRun === runId && loadChain(c, addrs, myRun));
+  await Promise.all([loadPrices(myRun), ...(addrs.length ? active.map(stagger) : [])]);
+  if (myRun !== runId) return;
+  loading = false; updateRefreshBtn();
+  renderPrices(); renderBody();
+  const failed = active.reduce((n,c)=>n+Object.values(results[c.id]).filter(r=>r.state==="err").length,0);
+  const now = new Date();
+  $("#updated").textContent = "Updated " + now.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"medium"}) + (failed?` · ${failed} failed`:"");
+  $("#updated").className = "pill " + (failed ? "bad" : "good");
+  $("#updated").title = Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+// ---- Rendering ----
+function visibleChains(){
+  let cs = CHAINS.filter(c => enabled[c.id]);
+  if (opts.hideZero && wallets.length) cs = cs.filter(c => { const rs = Object.values(results[c.id]||{}); return !rs.length || rs.some(r => r.state !== "ok" || r.wei > 0n); });
+  return cs;
+}
+function renderChips(){
+  $("#chainChips").innerHTML = CHAINS.map(c => `<label class="chip ${enabled[c.id]?"on":""}"><input type="checkbox" data-chain="${c.id}" ${enabled[c.id]?"checked":""}>${esc(c.name)} <span class="note">${c.sym}</span></label>`).join("");
+  $("#totalsToggle").checked = !!opts.totals; $("#hideZero").checked = !!opts.hideZero;
+}
+function cell(r, sym){
+  if (!r || r.state === "idle") return `<span class="zero">·</span>`;
+  if (r.state === "loading") return `<span class="spin" aria-label="loading"></span>`;
+  if (r.state === "err") return `<span class="err" title="${esc(r.msg)}">⚠ error</span>`;
+  if (r.wei === 0n) return `<span class="zero" title="0 (via ${esc(r.via)})">—</span>`;
+  const s = fmtWei(r.wei);
+  const usd = weiUsd(r.wei, sym);
+  const usdHtml = usd !== null ? `<span class="usd">${fmtUsd(usd)}</span>`
+    : (priceState === "done" ? `<span class="usd na" title="Price unavailable">$ n/a</span>` : `<span class="usd">…</span>`);
+  return `<span title="${fullWei(r.wei)} ${sym} (via ${esc(r.via)})">${s === "0" ? "&lt;0.000001" : s}</span>${usdHtml}`;
+}
+function renderHead(){
+  const cs = visibleChains();
+  const ph = c => prices[c.sym] ? `<span class="sym" title="${esc(prices[c.sym].src)}">${fmtPrice(prices[c.sym].usd)}</span>` : (priceState === "done" ? `<span class="sym na">price n/a</span>` : "");
+  $("#tbl thead").innerHTML = `<tr><th>Wallet (${wallets.length})</th><th class="usdcol">Total USD<span class="sym">all shown chains</span></th>${cs.map(c=>`<th>${esc(c.name)}<span class="sym">${c.sym}</span>${ph(c)}</th>`).join("")}</tr>`;
+}
+// Sum USD across shown chains for a list of results; returns {html, title}
+function usdSum(pairs){
+  let sum = 0, loading = false, missing = [], priced = 0;
+  for (const [c, r] of pairs) {
+    if (!r || r.state === "loading" || r.state === "idle") { loading = true; continue; }
+    if (r.state === "err") { missing.push(c.name + " (balance error)"); continue; }
+    if (r.wei === 0n) continue;
+    const u = weiUsd(r.wei, c.sym);
+    if (u === null) { if (priceState !== "done") loading = true; else missing.push(c.name + " (" + c.sym + " price n/a)"); continue; }
+    sum += u; priced++;
+  }
+  if (loading) return `<span class="spin"></span>`;
+  if (!priced && missing.length) return `<span class="na" title="${esc("No USD value available. " + missing.join(", "))}">$ n/a</span>`;
+  const t = missing.length ? `Excludes: ${missing.join(", ")}` : "Sum of all shown chains";
+  return `<span title="${esc(t)}">${fmtUsd(sum)}</span>${missing.length ? ` <span class="err" title="${esc(t)}">*</span>` : ""}`;
+}
+function renderBody(){
+  renderHead();
+  const cs = visibleChains();
+  const tb = $("#tbl tbody"), tf = $("#tbl tfoot");
+  if (!wallets.length) {
+    tb.innerHTML = `<tr><td colspan="${cs.length+2}" class="empty" style="text-align:center">No wallets yet. Open <b>Wallets: add, import, export</b> above to add some.</td></tr>`;
+    tf.innerHTML = ""; return;
+  }
+  tb.innerHTML = wallets.map((w,i) => {
+    const k = w.address.toLowerCase();
+    return `<tr><td><div class="walletcell"><div class="meta">
+      <span class="label" data-edit="${i}" title="Click to rename">${w.label ? esc(w.label) : `<span class="zero">Wallet ${i+1}</span>`}</span>
+      <span class="addr" title="${w.address}">${short(w.address)}
+        <button class="btn ghost small" data-copy="${i}" title="Copy address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></span></div>
+      <button class="btn ghost small" data-del="${i}" title="Remove wallet">✕</button></div></td>
+      <td class="usdcol">${usdSum(cs.map(c => [c, results[c.id] && results[c.id][k]]))}</td>
+      ${cs.map(c => `<td>${cell(results[c.id] && results[c.id][k], c.sym)}</td>`).join("")}</tr>`;
+  }).join("");
+  if (opts.totals && wallets.length > 1) {
+    const all = []; for (const c of cs) for (const w of wallets) all.push([c, results[c.id] && results[c.id][w.address.toLowerCase()]]);
+    tf.innerHTML = `<tr><td>Total</td><td class="usdcol">${usdSum(all)}</td>${cs.map(c => {
+      const rs = wallets.map(w => results[c.id] && results[c.id][w.address.toLowerCase()]);
+      if (rs.some(r => !r || r.state === "loading")) return `<td><span class="spin"></span></td>`;
+      const ok = rs.filter(r => r.state === "ok"); const bad = rs.length - ok.length;
+      if (!ok.length) return `<td><span class="err" title="No balances loaded">⚠ error</span></td>`;
+      const sum = ok.reduce((s,r)=>s+r.wei,0n);
+      const u = sum === 0n ? null : weiUsd(sum, c.sym);
+      const uh = sum === 0n ? "" : (u !== null ? `<span class="usd">${fmtUsd(u)}</span>` : (priceState === "done" ? `<span class="usd na">$ n/a</span>` : ""));
+      return `<td title="${fullWei(sum)} ${c.sym}${bad?` (excludes ${bad} failed)`:""}">${sum===0n?'<span class="zero">—</span>':fmtWei(sum)}${bad?' <span class="err" title="Partial: some wallets failed">*</span>':""}${uh}</td>`;
+    }).join("")}</tr>`;
+  } else tf.innerHTML = "";
+}
+function render(){ renderChips(); renderBody(); }
+
+// ---- Events ----
+$("#refreshBtn").onclick = requestRefresh;
+document.addEventListener("keydown", e => { if (e.key.toLowerCase()==="r" && !e.metaKey && !e.ctrlKey && !e.altKey && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) requestRefresh(); });
+$("#chainChips").addEventListener("change", e => {
+  const id = e.target.dataset.chain; if (!id) return;
+  enabled[id] = e.target.checked; save(); renderChips(); renderPrices();
+  if (enabled[id] && wallets.length) { // fetch just this chain
+    results[id] = {}; for (const w of wallets) results[id][w.address.toLowerCase()] = {state:"loading"};
+    renderBody(); loadChain(CHAINS.find(c=>c.id===id), wallets.map(w=>w.address), runId);
+  } else renderBody();
+});
+$("#totalsToggle").onchange = e => { opts.totals = e.target.checked; save(); renderBody(); };
+$("#hideZero").onchange = e => { opts.hideZero = e.target.checked; save(); renderBody(); };
+$("#addBtn").onclick = () => {
+  const a = $("#addAddr").value.trim(), l = $("#addLabel").value.trim();
+  if (!isAddr(a)) { toast("Not a valid address (0x + 40 hex characters)"); $("#addAddr").focus(); return; }
+  const {added} = addWallets([{label:l, address:a}]);
+  if (!added) { toast("Already in your list"); return; }
+  $("#addAddr").value = ""; $("#addLabel").value = ""; toast("Wallet added"); render(); requestRefresh();
+};
+$("#addAddr").addEventListener("keydown", e => { if (e.key === "Enter") $("#addBtn").click(); });
+$("#importBtn").onclick = () => { const t = $("#bulk").value; if (!t.trim()) { toast("Paste some addresses first"); return; } importText(t); $("#bulk").value = ""; };
+$("#fileIn").onchange = async e => { const f = e.target.files[0]; if (!f) return; importText(await f.text()); e.target.value = ""; };
+function download(name, text, type){ const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text],{type})); a.download = name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000); }
+$("#exportCsv").onclick = () => { if (!wallets.length) return toast("Nothing to export");
+  download("wallets.csv", "label,address\n" + wallets.map(w => `"${(w.label||"").replace(/"/g,'""')}",${w.address}`).join("\n") + "\n", "text/csv"); };
+$("#exportTxt").onclick = async () => { const t = wallets.map(w => (w.label ? w.label + "," : "") + w.address).join("\n");
+  try { await navigator.clipboard.writeText(t); toast("List copied to clipboard"); } catch { $("#bulk").value = t; toast("Copied into the text box"); } };
+$("#clearAll").onclick = () => { if (!wallets.length) return; if (confirm(`Remove all ${wallets.length} wallets from this tracker?`)) { wallets = []; save(); results = {}; render(); } };
+$("#tbl").addEventListener("click", async e => {
+  const t = e.target.closest("[data-copy],[data-del],[data-edit]"); if (!t) return;
+  if (t.dataset.copy) { const a = wallets[+t.dataset.copy].address; try { await navigator.clipboard.writeText(a); toast("Address copied"); } catch { prompt("Copy address:", a); } }
+  else if (t.dataset.del) { const w = wallets[+t.dataset.del]; if (confirm(`Remove ${w.label || short(w.address)}?`)) { wallets.splice(+t.dataset.del,1); save(); renderBody(); } }
+  else if (t.dataset.edit) { const w = wallets[+t.dataset.edit]; const v = prompt("Label for " + w.address, w.label || ""); if (v !== null) { w.label = v.trim().slice(0,60); save(); renderBody(); } }
+});
+
+render();
+if (wallets.length === 0) $("#manage").open = true;
+refresh();
+</script>
+</body>
+</html>

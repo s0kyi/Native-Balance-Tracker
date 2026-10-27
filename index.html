@@ -95,14 +95,21 @@ td.z a.ex{opacity:.3}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:.95}
 /* Bitcoin / Solana sections and the all-wallet total */
-h2.sect{font-size:14px;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
-h2.sect .dot{width:10px;height:10px;border-radius:50%;background:var(--c,var(--accent))}
-h2.sect .note{font-weight:400}
 table.alt{min-width:0}
 table.alt th.cc{border-top:3px solid var(--c)}
-.grand{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;padding:10px 14px;font-size:13px}
-.grand .gt{font-size:17px;font-weight:700;color:var(--accent)}
-.grand .gp b{font-weight:600}
+/* Tabs: EVM / BTC / Solana */
+.tabs{display:flex;gap:4px;margin:4px 0 12px;border-bottom:1px solid var(--border)}
+.tab{appearance:none;border:1px solid transparent;border-bottom:none;background:transparent;color:var(--muted);font:inherit;font-weight:600;font-size:14px;padding:9px 16px;border-radius:10px 10px 0 0;cursor:pointer;margin-bottom:-1px;display:inline-flex;align-items:center;gap:6px}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--accent);background:var(--card);border-color:var(--border);box-shadow:inset 0 3px 0 var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.tab .tc{font-weight:500;font-size:12.5px;opacity:.8}
+.tabpanel[hidden]{display:none}
+.tabpanel:focus{outline:none}
+.tabsum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;padding:10px 14px;font-size:13px}
+.tabsum .gt{font-size:17px;font-weight:700;color:var(--accent)}
+.emptytab{padding:22px 14px;text-align:center;color:var(--muted)}
+@media (max-width:640px){.tabs{gap:2px}.tab{flex:1;justify-content:center;padding:9px 6px;font-size:13.5px}.tab .tc{font-size:12px}}
 /* Floating scroll-to-bottom / back-to-top button */
 .fab{position:fixed;right:max(16px, calc(env(safe-area-inset-right) + 12px));bottom:max(16px, calc(env(safe-area-inset-bottom) + 12px));z-index:8;
   width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--accent);box-shadow:var(--shadow),0 4px 14px rgba(0,0,0,.12);
@@ -174,7 +181,6 @@ body.is-dragging{cursor:grabbing;user-select:none}
   </header>
 
   <div class="card pricestrip" id="prices">Prices (USD): loading…</div>
-  <div class="card grand" id="grand" hidden></div>
 
   <div class="card">
     <details id="manage">
@@ -204,6 +210,14 @@ Bitcoin (1…, 3…, bc1q…, bc1p…) and Solana addresses are detected automat
     </details>
   </div>
 
+  <div class="tabs" role="tablist" aria-label="Wallet type">
+    <button type="button" class="tab" role="tab" id="tab-evm" data-tab="evm" aria-controls="panel-evm" aria-selected="true" tabindex="0">EVM <span class="tc" id="tc-evm">(0)</span></button>
+    <button type="button" class="tab" role="tab" id="tab-btc" data-tab="btc" aria-controls="panel-btc" aria-selected="false" tabindex="-1">BTC <span class="tc" id="tc-btc">(0)</span></button>
+    <button type="button" class="tab" role="tab" id="tab-sol" data-tab="sol" aria-controls="panel-sol" aria-selected="false" tabindex="-1">Solana <span class="tc" id="tc-sol">(0)</span></button>
+  </div>
+
+  <section class="tabpanel" role="tabpanel" id="panel-evm" aria-labelledby="tab-evm">
+  <div class="card tabsum" id="sum-evm"></div>
   <div class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:8px">
       <b>Chains</b>
@@ -220,10 +234,21 @@ Bitcoin (1…, 3…, bc1q…, bc1p…) and Solana addresses are detected automat
     <div class="note" id="orderNote" style="margin-top:8px"></div>
   </div>
 
-  <h2 class="sect" id="evmTitle" hidden>EVM</h2>
   <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
-  <div id="altTables"></div>
   <p class="note">Click a column header to sort wallets (high → low, click again for low → high; errors and missing prices go to the bottom). Click a label to rename it. Amounts show up to 6 decimals (hover for the full value); the grey line under each is its USD value at the live price. "⚠ error" means every RPC for that chain failed; "price n/a" means no price source answered, so USD is left out (marked *). Nothing is guessed; press Refresh to retry.</p>
+  </section>
+
+  <section class="tabpanel" role="tabpanel" id="panel-btc" aria-labelledby="tab-btc" hidden>
+  <div class="card tabsum" id="sum-btc"></div>
+  <div class="altbox" id="alt-btc" data-type="btc"></div>
+  <p class="note">Native BTC only: confirmed + unconfirmed (mempool) balance per address, from mempool.space (fallback blockstream.info), fetched a couple at a time to stay under rate limits. No xpubs. Hover an amount for the confirmed / mempool split.</p>
+  </section>
+
+  <section class="tabpanel" role="tabpanel" id="panel-sol" aria-labelledby="tab-sol" hidden>
+  <div class="card tabsum" id="sum-sol"></div>
+  <div class="altbox" id="alt-sol" data-type="sol"></div>
+  <p class="note">Native SOL only (no SPL tokens), via public Solana RPCs (publicnode, then pocket.network, then Tatum), up to 100 wallets per request. An address that has never been used shows 0.</p>
+  </section>
 </div>
 <div class="toast" id="toast"></div>
 <button class="fab" id="scrollFab" type="button" hidden aria-label="Scroll to bottom" title="Scroll to bottom"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg></button>
@@ -524,27 +549,30 @@ function addWallets(items){
   let added = 0, dup = 0;
   const seen = new Set(wallets.map(w => w.address.toLowerCase()));
   const aseen = new Set(altWallets.map(w => altKey(w.type, w.address)));
+  const types = {evm:0, btc:0, sol:0};
   for (const it of items) {
     const type = addrType(it.address);
     if (type === "btc" || type === "sol") {
       const k = altKey(type, it.address);
       if (aseen.has(k)) { dup++; const w = altWallets.find(w => altKey(w.type, w.address) === k); if (it.label && !w.label) w.label = it.label.slice(0,60); continue; }
-      aseen.add(k); altWallets.push({label: (it.label||"").slice(0,60), address: type === "btc" && /^bc1/i.test(it.address) ? it.address.toLowerCase() : it.address, type}); added++; continue;
+      aseen.add(k); altWallets.push({label: (it.label||"").slice(0,60), address: type === "btc" && /^bc1/i.test(it.address) ? it.address.toLowerCase() : it.address, type}); added++; types[type]++; continue;
     }
     if (!isAddr(it.address)) continue;
     const k = it.address.toLowerCase();
     if (seen.has(k)) { dup++; const w = wallets.find(w=>w.address.toLowerCase()===k); if (it.label && !w.label) w.label = it.label; continue; }
-    seen.add(k); wallets.push({label: (it.label||"").slice(0,60), address: it.address}); added++;
+    seen.add(k); wallets.push({label: (it.label||"").slice(0,60), address: it.address}); added++; types.evm++;
   }
-  save(); return {added, dup};
+  save(); return {added, dup, types};
 }
 function importText(text){
   const {items, bad} = parseList(text);
-  const {added, dup} = addWallets(items);
+  const {added, dup, types} = addWallets(items);
   const by = {evm:0, btc:0, sol:0}; for (const it of items) { const t = addrType(it.address); if (t) by[t]++; }
   const kinds = Object.entries(by).filter(([,n]) => n).map(([t,n]) => `${n} ${({evm:"EVM", btc:"Bitcoin", sol:"Solana"})[t]}`).join(", ");
   toast(`Added ${added}` + (kinds && added ? ` (found ${kinds})` : "") + (dup?`, ${dup} duplicate${dup>1?"s":""} skipped`:"") + (bad?`, ${bad} invalid line${bad>1?"s":""} skipped (${ADDR_HELP})`:""));
-  render(); if (added) requestRefresh();
+  render();
+  if (added && !types[activeTab]) setTab(TABS.slice().sort((a, b) => types[b] - types[a])[0]);   // show the tab that received wallets
+  if (added) requestRefresh();
 }
 
 // ---- RPC ----
@@ -931,7 +959,7 @@ function renderBody(){
   renderHead(cs);
   const tb = $("#tbl tbody"), tf = $("#tbl tfoot");
   if (!wallets.length) {
-    tb.innerHTML = `<tr><td colspan="${cs.length+2}" class="empty" style="text-align:center">${altWallets.length ? "No EVM wallets in your list." : "No wallets yet."} Open <b>Wallets: add, import, export</b> above to add some.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="${cs.length+2}" class="empty" style="text-align:center">${altWallets.length ? "No EVM wallets yet." : "No wallets yet."} Add a 0x… address under <b>Wallets: add, import, export</b> above.</td></tr>`;
     tf.innerHTML = ""; renderAlt(); return;
   }
   // heat shading: log scale of each cell's USD vs the largest single cell / wallet total
@@ -992,10 +1020,13 @@ function altSum(t){   // {sum, loading, missing, priced} like usdSumVal
 const sumHtml = v => v.loading ? `<span class="spin"></span>` : (!v.priced && v.missing.length) ? `<span class="na" title="${esc(v.missing.join(", "))}">${naTxt()}</span>`
   : `<span title="${esc(v.missing.length ? "Excludes: " + v.missing.join(", ") : "Sum")}">${fmtUsd(v.sum)}</span>${v.missing.length ? ` <span class="err" title="${esc("Excludes: " + v.missing.join(", "))}">*</span>` : ""}`;
 function renderAlt(){
-  const box = $("#altTables"); if (!box) return;
-  $("#evmTitle").hidden = !altWallets.length;
-  box.innerHTML = ["btc", "sol"].map(t => {
-    const idx = altWallets.map((w, i) => i).filter(i => altWallets[i].type === t); if (!idx.length) return "";
+  for (const t of ["btc", "sol"]) { const box = $("#alt-" + t); if (box) box.innerHTML = altTableHtml(t); }
+  renderTabs();
+}
+function altTableHtml(t){
+  {
+    const idx = altWallets.map((w, i) => i).filter(i => altWallets[i].type === t);
+    if (!idx.length) return `<div class="card emptytab">${t === "btc" ? "No Bitcoin wallets yet. Add a 1…, 3…, bc1q… or bc1p… address under <b>Wallets: add, import, export</b> above." : "No Solana wallets yet. Add a Solana address (base58, 32–44 characters) under <b>Wallets: add, import, export</b> above."}</div>`;
     const A = ALT[t], key = i => { const r = altRes[t][altWallets[i].address]; return r && r.state === "ok" ? Number(r.v) : null; };
     if (opts.sortCol !== "orig") idx.sort((a, b) => (key(a) === null) - (key(b) === null) || (key(b) ?? 0) - (key(a) ?? 0) || a - b);
     const vals = idx.map(i => { const r = altRes[t][altWallets[i].address]; return r && r.state === "ok" && r.v > 0n ? altUsd(r.v, t) : null; });
@@ -1026,20 +1057,33 @@ function renderAlt(){
       const rs = idx.map(i => altRes[t][altWallets[i].address]); if (rs.some(r => !r || r.state === "loading")) return `<tr><td>Total</td><td class="usdcol"><span class="spin"></span></td><td><span class="spin"></span></td></tr>`;
       const ok = rs.filter(r => r.state === "ok"), bad = rs.length - ok.length, sum = ok.reduce((s, r) => s + r.v, 0n);
       return `<tr><td>Total</td><td class="usdcol">${sumHtml(all)}</td><td class="cc ${sum === 0n ? "z" : "nz"}" style="${altColor(t)}" title="${fullUnits(sum, A.dec)} ${A.sym}${bad ? ` (excludes ${bad} failed)` : ""}">${sum === 0n ? '<span class="zero">—</span>' : `<span class="amt">${fmtUnits(sum, A.dec, A.dp)}</span>`}${bad ? ' <span class="err" title="Partial: some wallets failed">*</span>' : ""}</td></tr>`; })() : "";
-    return `<h2 class="sect cc" style="${altColor(t)}"><span class="dot"></span>${A.name} <span class="note">(${idx.length} wallet${idx.length > 1 ? "s" : ""}, native ${A.sym} only)</span></h2>
-    <div class="tablewrap"><table class="alt" data-type="${t}"><thead><tr><th>Wallet (${idx.length})</th><th class="usdcol">Total ${cur()}<span class="sym">${A.name}</span></th><th class="cc" style="${altColor(t)}"><span class="thname"><span class="dot"></span>${A.name}</span><span class="sym">${A.sym}</span>${pr}</th></tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`;
-  }).join("");
-  renderGrand();
+    return `<div class="tablewrap"><table class="alt" data-type="${t}"><thead><tr><th>Wallet (${idx.length})</th><th class="usdcol">Total ${cur()}<span class="sym">${A.name}</span></th><th class="cc" style="${altColor(t)}"><span class="thname"><span class="dot"></span>${A.name}</span><span class="sym">${A.sym}</span>${pr}</th></tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`;
+  }
 }
-// All-wallet total (EVM + Bitcoin + Solana), shown when Bitcoin or Solana wallets exist
-function renderGrand(){
-  const g = $("#grand"); if (!g) return;
-  if (!altWallets.length) { g.hidden = true; g.innerHTML = ""; return; }
-  const cs = visibleChains(), all = []; for (const c of cs) for (const w of wallets) all.push([c, res(c, w.address.toLowerCase())]);
-  const parts = [["EVM", wallets.length ? usdSumVal(all) : null], ["Bitcoin", altWallets.some(w => w.type === "btc") ? altSum("btc") : null], ["Solana", altWallets.some(w => w.type === "sol") ? altSum("sol") : null]].filter(p => p[1]);
-  const tot = {sum: parts.reduce((s, p) => s + p[1].sum, 0), loading: parts.some(p => p[1].loading), missing: parts.flatMap(p => p[1].missing), priced: parts.reduce((s, p) => s + p[1].priced, 0)};
-  g.hidden = false;
-  g.innerHTML = `<b>All wallets (${cur()})</b> <span class="gt" id="grandTotal">${sumHtml(tot)}</span>` + parts.map(([n, v]) => `<span class="gp" data-part="${n}">${n} <b>${sumHtml(v)}</b></span>`).join("");
+// ---- Tabs (EVM / BTC / Solana): each with its own wallet count and total; EVM, Bitcoin and Solana are never summed together
+const TABS = ["evm", "btc", "sol"], TAB_NAME = {evm:"EVM", btc:"Bitcoin", sol:"Solana"}, LS_TAB = "nbt.tab.v1";
+let activeTab = TABS.includes(localStorage.getItem(LS_TAB)) ? localStorage.getItem(LS_TAB) : "evm";
+const tabCount = t => t === "evm" ? wallets.length : altWallets.filter(w => w.type === t).length;
+let fabRefresh = () => {};
+function renderTabs(){
+  for (const t of TABS) {
+    const el = $("#tc-" + t); if (el) el.textContent = `(${tabCount(t)})`;
+    const sum = $("#sum-" + t); if (!sum) continue;
+    const n = tabCount(t);
+    let v = null;
+    if (n) { if (t === "evm") { const all = []; for (const c of visibleChains()) for (const w of wallets) all.push([c, res(c, w.address.toLowerCase())]); v = usdSumVal(all); } else v = altSum(t); }
+    sum.innerHTML = `<b>${TAB_NAME[t]} total (${cur()})</b> <span class="gt" id="tabTotal-${t}">${n ? sumHtml(v) : fmtUsd(0)}</span><span class="note">${n} wallet${n === 1 ? "" : "s"}${t === "evm" ? " · all shown chains" : " · native " + ALT[t].sym + " only"}</span>`;
+  }
+}
+function setTab(t, focus){
+  if (!TABS.includes(t)) return;
+  activeTab = t; localStorage.setItem(LS_TAB, t);
+  for (const x of TABS) {
+    const b = $("#tab-" + x), p = $("#panel-" + x), on = x === t;
+    b.setAttribute("aria-selected", on ? "true" : "false"); b.tabIndex = on ? 0 : -1; p.hidden = !on;
+  }
+  if (focus) $("#tab-" + t).focus();
+  closeExplorerMenu(); fabRefresh();
 }
 
 // ---- Reordering (pointer events: mouse drags anywhere on a chip/header, touch uses the ⠿ grip) ----
@@ -1150,7 +1194,7 @@ $("#addBtn").onclick = () => {
   $("#addAddr").removeAttribute("aria-invalid");
   const {added} = addWallets([{label:l, address:a}]);
   if (!added) { toast("Already in your list"); return; }
-  $("#addAddr").value = ""; $("#addLabel").value = ""; toast({evm:"EVM", btc:"Bitcoin", sol:"Solana"}[type] + " wallet added"); render(); requestRefresh();
+  $("#addAddr").value = ""; $("#addLabel").value = ""; toast({evm:"EVM", btc:"Bitcoin", sol:"Solana"}[type] + " wallet added"); render(); setTab(type); requestRefresh();
 };
 $("#addAddr").addEventListener("keydown", e => { if (e.key === "Enter") $("#addBtn").click(); });
 $("#importBtn").onclick = () => { const t = $("#bulk").value; if (!t.trim()) { toast("Paste some addresses first"); return; } importText(t); $("#bulk").value = ""; };
@@ -1170,13 +1214,21 @@ $("#tbl").addEventListener("click", async e => {
   else if (t.dataset.edit) { const w = wallets[+t.dataset.edit]; const v = prompt("Label for " + w.address, w.label || ""); if (v !== null) { w.label = v.trim().slice(0,60); save(); renderBody(); } }
 });
 
-$("#altTables").addEventListener("click", async e => {
+document.querySelectorAll(".altbox").forEach(box => box.addEventListener("click", async e => {
   const t = e.target.closest("[data-acopy],[data-adel],[data-aedit],[data-aexplore]"); if (!t) return;
   const d = t.dataset, w = altWallets[+(d.acopy ?? d.adel ?? d.aedit ?? d.aexplore)]; if (!w) return;
   if (d.aexplore !== undefined) { e.stopPropagation(); openExplorerMenu(t, w, ALT[w.type].ex.map(([n, u]) => ({name: ALT[w.type].name, ex: n, url: u + w.address, style: altColor(w.type)}))); }
   else if (d.acopy !== undefined) { try { await navigator.clipboard.writeText(w.address); toast("Address copied"); } catch { prompt("Copy address:", w.address); } }
   else if (d.adel !== undefined) { if (confirm(`Remove ${w.label || short(w.address)}?`)) { altWallets.splice(+d.adel, 1); save(); renderBody(); } }
   else if (d.aedit !== undefined) { const v = prompt("Label for " + w.address, w.label || ""); if (v !== null) { w.label = v.trim().slice(0,60); save(); renderBody(); } }
+}));
+// Tab bar: click, and ←/→/Home/End keyboard navigation (WAI-ARIA tabs pattern, automatic activation)
+$(".tabs").addEventListener("click", e => { const b = e.target.closest("[role=tab]"); if (b) setTab(b.dataset.tab); });
+$(".tabs").addEventListener("keydown", e => {
+  const i = TABS.indexOf(activeTab); let j = null;
+  if (e.key === "ArrowRight") j = (i + 1) % TABS.length; else if (e.key === "ArrowLeft") j = (i + TABS.length - 1) % TABS.length;
+  else if (e.key === "Home") j = 0; else if (e.key === "End") j = TABS.length - 1;
+  if (j !== null) { e.preventDefault(); setTab(TABS[j], true); }
 });
 // Row explorer menu: one link per enabled chain (in column order) that has a known explorer
 function closeExplorerMenu(){ const m = $("#exMenu"); if (m) m.remove(); }
@@ -1211,6 +1263,7 @@ addEventListener("scroll", closeExplorerMenu, true); addEventListener("resize", 
     }
   }
   const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+  fabRefresh = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } update(); };   // called when the tab changes
   window.addEventListener("scroll", schedule, {passive: true});
   window.addEventListener("resize", schedule);
   if (window.ResizeObserver) new ResizeObserver(schedule).observe(document.body);
@@ -1221,7 +1274,7 @@ addEventListener("scroll", closeExplorerMenu, true); addEventListener("resize", 
   update();
 })();
 altWallets = altWallets.map(w => ({label: String(w.label||"").slice(0,60), address: w.address, type: addrType(w.address)})).filter(w => w.type === "btc" || w.type === "sol");
-render(); renderCurrency();
+render(); renderCurrency(); setTab(activeTab);
 if (wallets.length + altWallets.length === 0) $("#manage").open = true;
 refresh();
 </script>

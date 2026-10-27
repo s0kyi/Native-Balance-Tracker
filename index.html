@@ -66,6 +66,9 @@ th .sym.na{font-weight:500}
 .usdcol{font-weight:600;border-right:1px solid var(--border)}
 .pricestrip{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 14px;font-size:13px}
 .pp{white-space:nowrap}
+.pp.xp{display:inline-flex;align-items:center;gap:3px;padding:1px 8px 1px 6px;border-radius:999px;background:color-mix(in srgb, var(--xc) 12%, transparent);border:1px solid color-mix(in srgb, var(--xc) 45%, transparent)}
+.pp.xp .dot{background:var(--xc);margin-right:2px}
+.pp.xp .xs{font-weight:700;color:color-mix(in srgb, var(--xc) 80%, var(--text))}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:.95}
 .walletcell{display:flex;align-items:center;gap:8px;justify-content:space-between}
@@ -208,6 +211,8 @@ const COLORS = {eth:["#5A73DB","#8A9EF0"], bsc:["#B88A00","#F0B90B"], base:["#00
 for (const c of CHAINS) c.color = COLORS[c.id] || ["#6b7280","#9aa3b2"];
 // ---- USD prices: CoinGecko first, then Coinbase, then Binance (USDT pairs). All free, no key, CORS "*". ----
 const COINS = {
+  BTC:  {cg:"bitcoin",                 cb:"BTC",  bn:"BTCUSDT", extra:"#F7931A"},   // price-only (no balance column)
+  SOL:  {cg:"solana",                  cb:"SOL",  bn:"SOLUSDT", extra:"#9945FF"},   // price-only (no balance column)
   ETH:  {cg:"ethereum",                cb:"ETH",  bn:"ETHUSDT"},
   BNB:  {cg:"binancecoin",             cb:"BNB",  bn:"BNBUSDT"},
   POL:  {cg:"polygon-ecosystem-token", cb:"POL",  bn:"POLUSDT"},
@@ -257,10 +262,14 @@ const fmtPrice = v => "$" + v.toLocaleString("en-US", {maximumFractionDigits: v 
 const weiUsd = (wei, sym) => prices[sym] ? Number(wei) / 1e18 * prices[sym].usd : null;
 function renderPrices(){
   const el = $("#prices"); if (!el) return;
-  const syms = [...new Set(CHAINS.filter(c => enabled[c.id]).map(c => c.sym))];
+  // Strip always starts BTC, ETH, BNB, SOL; then the other enabled chains' coins in column order (no repeats)
+  const LEAD = ["BTC", "ETH", "BNB", "SOL"];
+  const syms = [...new Set([...LEAD, ...CHAINS.filter(c => enabled[c.id]).map(c => c.sym)])];
   if (priceState === "loading" && !Object.keys(prices).length) { el.innerHTML = `Prices (USD): <span class="spin"></span>`; return; }
   const srcs = [...new Set(Object.values(prices).map(p => p.src))];
-  el.innerHTML = `<b>Prices (USD)</b> ` + syms.map(k => prices[k]
+  el.innerHTML = `<b>Prices (USD)</b> ` + syms.map(k => COINS[k] && COINS[k].extra
+      ? `<span class="pp xp" data-coin="${k}" style="--xc:${COINS[k].extra}"${prices[k] ? ` title="${esc(prices[k].src)}"` : ` title="${esc("Price unavailable. " + priceErrs.join("\n"))}"`}><span class="dot"></span><span class="xs">${k}</span> <b>${prices[k] ? fmtPrice(prices[k].usd) : "—"}</b></span>`
+      : prices[k]
       ? `<span class="pp" title="${esc(prices[k].src)}">${k} <b>${fmtPrice(prices[k].usd)}</b></span>`
       : `<span class="pp"><span>${k}</span> <span class="err" title="${esc(priceErrs.join("\n") || "no source had this coin")}">price unavailable</span></span>`).join("")
     + `<span class="note">${srcs.length ? "via " + esc(srcs.join(", ")) : ""}${priceTime ? " · " + priceTime.toLocaleTimeString() : ""}</span>`;

@@ -108,7 +108,11 @@ table.alt th.cc{border-top:3px solid var(--c)}
 .tabpanel:focus{outline:none}
 .tabsum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;padding:10px 14px;font-size:13px}
 .tabsum .gt{font-size:17px;font-weight:700;color:var(--accent)}
+td.txs .txc{font-weight:600}
+td.txs .txp{display:block;font-size:11.5px;color:var(--muted)}
+th.txs,td.txs{min-width:84px}
 .emptytab{padding:22px 14px;text-align:center;color:var(--muted)}
+@media (max-width:640px){th.txs,td.txs{min-width:0;padding-left:8px;padding-right:8px}td.txs .txpw{display:none}td.txs .txp{font-size:11px}}
 @media (max-width:640px){.tabs{gap:2px}.tab{flex:1;justify-content:center;padding:9px 6px;font-size:13.5px}.tab .tc{font-size:12px}}
 /* Floating scroll-to-bottom / back-to-top button */
 .fab{position:fixed;right:max(16px, calc(env(safe-area-inset-right) + 12px));bottom:max(16px, calc(env(safe-area-inset-bottom) + 12px));z-index:8;
@@ -241,7 +245,7 @@ Bitcoin (1…, 3…, bc1q…, bc1p…) and Solana addresses are detected automat
   <section class="tabpanel" role="tabpanel" id="panel-btc" aria-labelledby="tab-btc" hidden>
   <div class="card tabsum" id="sum-btc"></div>
   <div class="altbox" id="alt-btc" data-type="btc"></div>
-  <p class="note">Native BTC only: confirmed + unconfirmed (mempool) balance per address, from mempool.space (fallback blockstream.info), fetched a couple at a time to stay under rate limits. No xpubs. Hover an amount for the confirmed / mempool split.</p>
+  <p class="note">Native BTC only: confirmed + unconfirmed (mempool) balance per address, from mempool.space (fallback blockstream.info), fetched a couple at a time to stay under rate limits. No xpubs. Hover an amount for the confirmed / mempool split. "Txs" is the address's transaction count from the same response (confirmed, plus "+N pending" in the mempool).</p>
   </section>
 
   <section class="tabpanel" role="tabpanel" id="panel-sol" aria-labelledby="tab-sol" hidden>
@@ -747,7 +751,8 @@ async function fetchBtcOne(addr){
         const cs = d && d.chain_stats, ms = d && d.mempool_stats;
         if (!cs || !ms) throw new Error("unexpected response");
         const conf = BigInt(cs.funded_txo_sum) - BigInt(cs.spent_txo_sum), mem = BigInt(ms.funded_txo_sum) - BigInt(ms.spent_txo_sum);
-        return {state:"ok", v: conf + mem, conf, mem, via: host};
+        const txc = Number(cs.tx_count), txm = Number(ms.tx_count);   // transaction counts come with the same response (no extra request)
+        return {state:"ok", v: conf + mem, conf, mem, via: host, txc: Number.isFinite(txc) ? txc : null, txm: Number.isFinite(txm) ? txm : 0};
       } catch(e) {
         errs.push(host + ": " + (e.message || "network/CORS error"));
         if (e.status === 429 && !tries) { await sleep(2500); continue; }   // rate limited: back off once, then fall back
@@ -1023,6 +1028,12 @@ function renderAlt(){
   for (const t of ["btc", "sol"]) { const box = $("#alt-" + t); if (box) box.innerHTML = altTableHtml(t); }
   renderTabs();
 }
+// Bitcoin "Txs" column: confirmed tx_count, plus "+N pending" when the mempool has any; "—" while loading or on error
+function txCell(r){
+  if (!r || (r.state !== "ok" && r.state !== "partial") || r.txc === null || r.txc === undefined) return `<td class="txs"><span class="zero"${r && r.state === "err" ? ' title="Balance lookup failed"' : ""}>—</span></td>`;
+  const pend = r.txm > 0 ? `<span class="txp" title="${r.txm.toLocaleString("en-US")} unconfirmed (mempool) transaction${r.txm === 1 ? "" : "s"}">+${r.txm.toLocaleString("en-US")}<span class="txpw"> pending</span></span>` : "";
+  return `<td class="txs" title="${r.txc.toLocaleString("en-US")} confirmed${r.txm ? `, ${r.txm.toLocaleString("en-US")} pending` : ""}${r.bad ? ` (excludes ${r.bad} failed)` : ""}"><span class="txc">${r.txc.toLocaleString("en-US")}</span>${r.bad ? ' <span class="err" title="Partial: some wallets failed">*</span>' : ""}${pend}</td>`;
+}
 function altTableHtml(t){
   {
     const idx = altWallets.map((w, i) => i).filter(i => altWallets[i].type === t);
@@ -1050,14 +1061,14 @@ function altTableHtml(t){
       <span class="addr" title="${esc(w.address)}">${short(w.address)}
         <button class="btn ghost small" data-acopy="${i}" title="Copy address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn ghost small" data-aexplore="${i}" title="Open in a block explorer" aria-haspopup="menu">${EX_ICON}</button></span></div>
       <button class="btn ghost small" data-adel="${i}" title="Remove wallet">✕</button></div></td>
-      <td class="usdcol"${ph ? ` style="--h:${ph}%"` : ""}>${tot}</td>${c}</tr>`;
+      <td class="usdcol"${ph ? ` style="--h:${ph}%"` : ""}>${tot}</td>${c}${t === "btc" ? txCell(r) : ""}</tr>`;
     }).join("");
     const all = altSum(t);
     const foot = opts.totals && idx.length > 1 ? (() => {
-      const rs = idx.map(i => altRes[t][altWallets[i].address]); if (rs.some(r => !r || r.state === "loading")) return `<tr><td>Total</td><td class="usdcol"><span class="spin"></span></td><td><span class="spin"></span></td></tr>`;
+      const rs = idx.map(i => altRes[t][altWallets[i].address]); if (rs.some(r => !r || r.state === "loading")) return `<tr><td>Total</td><td class="usdcol"><span class="spin"></span></td><td><span class="spin"></span></td>${t === "btc" ? '<td class="txs"><span class="zero">—</span></td>' : ""}</tr>`;
       const ok = rs.filter(r => r.state === "ok"), bad = rs.length - ok.length, sum = ok.reduce((s, r) => s + r.v, 0n);
-      return `<tr><td>Total</td><td class="usdcol">${sumHtml(all)}</td><td class="cc ${sum === 0n ? "z" : "nz"}" style="${altColor(t)}" title="${fullUnits(sum, A.dec)} ${A.sym}${bad ? ` (excludes ${bad} failed)` : ""}">${sum === 0n ? '<span class="zero">—</span>' : `<span class="amt">${fmtUnits(sum, A.dec, A.dp)}</span>`}${bad ? ' <span class="err" title="Partial: some wallets failed">*</span>' : ""}</td></tr>`; })() : "";
-    return `<div class="tablewrap"><table class="alt" data-type="${t}"><thead><tr><th>Wallet (${idx.length})</th><th class="usdcol">Total ${cur()}<span class="sym">${A.name}</span></th><th class="cc" style="${altColor(t)}"><span class="thname"><span class="dot"></span>${A.name}</span><span class="sym">${A.sym}</span>${pr}</th></tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`;
+      return `<tr><td>Total</td><td class="usdcol">${sumHtml(all)}</td><td class="cc ${sum === 0n ? "z" : "nz"}" style="${altColor(t)}" title="${fullUnits(sum, A.dec)} ${A.sym}${bad ? ` (excludes ${bad} failed)` : ""}">${sum === 0n ? '<span class="zero">—</span>' : `<span class="amt">${fmtUnits(sum, A.dec, A.dp)}</span>`}${bad ? ' <span class="err" title="Partial: some wallets failed">*</span>' : ""}</td>${t === "btc" ? txCell({state: bad ? "partial" : "ok", txc: ok.reduce((n, r) => n + (r.txc || 0), 0), txm: ok.reduce((n, r) => n + (r.txm || 0), 0), bad}) : ""}</tr>`; })() : "";
+    return `<div class="tablewrap"><table class="alt" data-type="${t}"><thead><tr><th>Wallet (${idx.length})</th><th class="usdcol">Total ${cur()}<span class="sym">${A.name}</span></th><th class="cc" style="${altColor(t)}"><span class="thname"><span class="dot"></span>${A.name}</span><span class="sym">${A.sym}</span>${pr}</th>${t === "btc" ? '<th class="txs" title="Number of transactions: confirmed, plus pending (mempool) if any">Txs<span class="sym">confirmed</span></th>' : ""}</tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`;
   }
 }
 // ---- Tabs (EVM / BTC / Solana): each with its own wallet count and total; EVM, Bitcoin and Solana are never summed together

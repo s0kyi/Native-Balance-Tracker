@@ -94,6 +94,27 @@ td.z a.ex{opacity:.3}
 .pp.xp .xs{font-weight:700;color:color-mix(in srgb, var(--xc) 80%, var(--text))}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:.95}
+/* Bitcoin / Solana sections and the all-wallet total */
+h2.sect{font-size:14px;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+h2.sect .dot{width:10px;height:10px;border-radius:50%;background:var(--c,var(--accent))}
+h2.sect .note{font-weight:400}
+table.alt{min-width:0}
+table.alt th.cc{border-top:3px solid var(--c)}
+.grand{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;padding:10px 14px;font-size:13px}
+.grand .gt{font-size:17px;font-weight:700;color:var(--accent)}
+.grand .gp b{font-weight:600}
+/* Floating scroll-to-bottom / back-to-top button */
+.fab{position:fixed;right:max(16px, calc(env(safe-area-inset-right) + 12px));bottom:max(16px, calc(env(safe-area-inset-bottom) + 12px));z-index:8;
+  width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--accent);box-shadow:var(--shadow),0 4px 14px rgba(0,0,0,.12);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:opacity .2s,transform .2s,border-color .15s}
+.fab:hover{border-color:var(--accent)}
+.fab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fab svg{transition:transform .25s}
+.fab.up svg{transform:rotate(180deg)}
+.fab[hidden]{display:none}
+body.is-dragging .fab{opacity:0;pointer-events:none}
+@media (max-width:640px){.fab{width:36px;height:36px}.fab svg{width:16px;height:16px}}
+@media (prefers-reduced-motion: reduce){.fab,.fab svg{transition:none}}
 .walletcell{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .walletcell .meta{display:flex;flex-direction:column}
 .status{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -153,6 +174,7 @@ body.is-dragging{cursor:grabbing;user-select:none}
   </header>
 
   <div class="card pricestrip" id="prices">Prices (USD): loading…</div>
+  <div class="card grand" id="grand" hidden></div>
 
   <div class="card">
     <details id="manage">
@@ -160,13 +182,14 @@ body.is-dragging{cursor:grabbing;user-select:none}
       <div style="margin-top:12px">
         <div class="row" style="margin-bottom:12px">
           <input type="text" id="addLabel" placeholder="Label (optional)" style="width:160px">
-          <input type="text" id="addAddr" placeholder="0x… public address" style="flex:1;min-width:260px;font-family:ui-monospace,monospace">
+          <input type="text" id="addAddr" placeholder="Public address: EVM 0x…, Bitcoin 1… / 3… / bc1…, or Solana" style="flex:1;min-width:260px;font-family:ui-monospace,monospace">
           <button class="btn" id="addBtn">+ Add wallet</button>
         </div>
         <textarea id="bulk" placeholder="Paste wallets, one per line. Any of these work:
 0xYourWalletAddress
 Main,0xYourWalletAddress
-0xYourWalletAddress Main"></textarea>
+0xYourWalletAddress Main
+Bitcoin (1…, 3…, bc1q…, bc1p…) and Solana addresses are detected automatically."></textarea>
         <div class="row" style="margin-top:8px">
           <button class="btn" id="importBtn">Import pasted list</button>
           <label class="btn" for="fileIn">Import .txt / .csv file</label>
@@ -197,10 +220,13 @@ Main,0xYourWalletAddress
     <div class="note" id="orderNote" style="margin-top:8px"></div>
   </div>
 
+  <h2 class="sect" id="evmTitle" hidden>EVM</h2>
   <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+  <div id="altTables"></div>
   <p class="note">Click a column header to sort wallets (high → low, click again for low → high; errors and missing prices go to the bottom). Click a label to rename it. Amounts show up to 6 decimals (hover for the full value); the grey line under each is its USD value at the live price. "⚠ error" means every RPC for that chain failed; "price n/a" means no price source answered, so USD is left out (marked *). Nothing is guessed; press Refresh to retry.</p>
 </div>
 <div class="toast" id="toast"></div>
+<button class="fab" id="scrollFab" type="button" hidden aria-label="Scroll to bottom" title="Scroll to bottom"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg></button>
 
 <script>
 "use strict";
@@ -274,8 +300,8 @@ const wethLink = (c, addr) => { const u = wethUrl(c.id, addr); return u ? `<a cl
 const exLink = (c, addr) => { const u = explorerUrl(c.id, addr); return u ? `<a class="ex" href="${esc(u)}" target="_blank" rel="noopener" title="Open on ${esc(EXPLORERS[c.id][0])}" aria-label="Open on ${esc(EXPLORERS[c.id][0])}">${EX_ICON}</a>` : ""; };
 // ---- USD prices: CoinGecko first, then Coinbase, then Binance (USDT pairs). All free, no key, CORS "*". ----
 const COINS = {
-  BTC:  {cg:"bitcoin",                 cb:"BTC",  bn:"BTCUSDT", extra:"#F7931A"},   // price-only (no balance column)
-  SOL:  {cg:"solana",                  cb:"SOL",  bn:"SOLUSDT", extra:"#9945FF"},   // price-only (no balance column)
+  BTC:  {cg:"bitcoin",                 cb:"BTC",  bn:"BTCUSDT", extra:"#F7931A"},   // no EVM column; balances in the Bitcoin table
+  SOL:  {cg:"solana",                  cb:"SOL",  bn:"SOLUSDT", extra:"#9945FF"},   // no EVM column; balances in the Solana table
   ETH:  {cg:"ethereum",                cb:"ETH",  bn:"ETHUSDT"},
   BNB:  {cg:"binancecoin",             cb:"BNB",  bn:"BNBUSDT"},
   POL:  {cg:"polygon-ecosystem-token", cb:"POL",  bn:"POLUSDT"},
@@ -371,7 +397,7 @@ function renderPrices(){
     + `<span class="note">${srcs.length ? "via " + esc(srcs.join(", ")) : ""}${cur() === "MYR" ? " · ×" + fx.rate.toFixed(4) + " MYR/USD (" + esc(fx.src) + ")" : ""}${priceTime ? " · " + priceTime.toLocaleTimeString() : ""}</span>`;
 }
 
-const LS = {wallets:"nbt.wallets.v1", chains:"nbt.chains.v1", opts:"nbt.opts.v1", seeded:"nbt.seeded.v1"};
+const LS = {wallets:"nbt.wallets.v1", chains:"nbt.chains.v1", opts:"nbt.opts.v1", seeded:"nbt.seeded.v1", altWallets:"nbt.altwallets.v1"};
 const BATCH = 10, TIMEOUT_MS = 12000, DP = 6;
 // Multicall3: one eth_call returns every wallet's native balance on a chain.
 // Verified (eth_getCode + values equal to eth_getBalance) on all 20 chains. zkSync Era and Abstract use the
@@ -385,6 +411,10 @@ const STAGGER_MS = 60;         // small gap between chains starting their reques
 let wallets = load(LS.wallets, null);
 if (!Array.isArray(wallets)) wallets = [];
 localStorage.setItem(LS.seeded, "1");
+// Bitcoin / Solana wallets live in their own key, so older saved EVM lists load unchanged
+let altWallets = load(LS.altWallets, []);
+if (!Array.isArray(altWallets)) altWallets = [];
+altWallets = altWallets.filter(w => w && typeof w.address === "string");   // types are re-checked once the validators are defined (below)
 let enabled = load(LS.chains, null);
 if (!enabled || typeof enabled !== "object") enabled = Object.fromEntries(CHAINS.map(c => [c.id, true]));
 for (const c of CHAINS) if (!(c.id in enabled)) enabled[c.id] = true;
@@ -406,7 +436,7 @@ let runId = 0;
 save();
 
 function load(k, d){ try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } }
-function save(){ localStorage.setItem(LS.wallets, JSON.stringify(wallets)); localStorage.setItem(LS.chains, JSON.stringify(enabled)); localStorage.setItem(LS.opts, JSON.stringify(opts)); }
+function save(){ localStorage.setItem(LS.altWallets, JSON.stringify(altWallets)); localStorage.setItem(LS.wallets, JSON.stringify(wallets)); localStorage.setItem(LS.chains, JSON.stringify(enabled)); localStorage.setItem(LS.opts, JSON.stringify(opts)); }
 
 // ---- Helpers ----
 const $ = s => document.querySelector(s);
@@ -424,12 +454,64 @@ function fmtWei(wei, dp=DP){
 }
 function fullWei(wei){ const base=10n**18n; const f=(wei%base).toString().padStart(18,"0").replace(/0+$/,""); return (wei/base).toString() + (f?"."+f:""); }
 
+// ---- Address types: EVM (0x…), Bitcoin (base58check 1…/3…, bech32 bc1q…, bech32m bc1p…), Solana (base58, 32 bytes) ----
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function b58decode(str){
+  let n = 0n; for (const ch of str) { const i = B58.indexOf(ch); if (i < 0) return null; n = n * 58n + BigInt(i); }
+  const out = []; while (n > 0n) { out.unshift(Number(n & 255n)); n >>= 8n; }
+  for (const ch of str) { if (ch !== "1") break; out.unshift(0); }
+  return new Uint8Array(out);
+}
+function sha256(bytes){   // small synchronous SHA-256 (only used for Bitcoin base58check checksums)
+  const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const l = bytes.length, padLen = ((l + 9 + 63) >> 6) << 6, m = new Uint8Array(padLen); m.set(bytes); m[l] = 0x80;
+  const dv = new DataView(m.buffer); dv.setUint32(padLen - 4, l * 8); dv.setUint32(padLen - 8, Math.floor(l / 0x20000000));
+  const w = new Uint32Array(64), rr = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let o = 0; o < padLen; o += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 64; i++) { const s0 = rr(w[i-15],7) ^ rr(w[i-15],18) ^ (w[i-15] >>> 3), s1 = rr(w[i-2],17) ^ rr(w[i-2],19) ^ (w[i-2] >>> 10); w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0; }
+    let [a,b,c,d,e,f,g,h] = H;
+    for (let i = 0; i < 64; i++) { const t1 = (h + (rr(e,6) ^ rr(e,11) ^ rr(e,25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) >>> 0, t2 = ((rr(a,2) ^ rr(a,13) ^ rr(a,22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0; }
+    H[0]=(H[0]+a)>>>0; H[1]=(H[1]+b)>>>0; H[2]=(H[2]+c)>>>0; H[3]=(H[3]+d)>>>0; H[4]=(H[4]+e)>>>0; H[5]=(H[5]+f)>>>0; H[6]=(H[6]+g)>>>0; H[7]=(H[7]+h)>>>0;
+  }
+  const out = new Uint8Array(32); const ov = new DataView(out.buffer); H.forEach((x, i) => ov.setUint32(i * 4, x)); return out;
+}
+function isBtcBase58(a){
+  if (!/^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a)) return false;
+  const b = b58decode(a); if (!b || b.length !== 25 || (b[0] !== 0 && b[0] !== 5)) return false;
+  const h = sha256(sha256(b.slice(0, 21))); return h[0]===b[21] && h[1]===b[22] && h[2]===b[23] && h[3]===b[24];
+}
+function isBtcBech32(a){   // BIP-173 (v0, bech32) and BIP-350 (v1+ e.g. taproot, bech32m); mainnet "bc" only
+  if (a !== a.toLowerCase() && a !== a.toUpperCase()) return false;
+  a = a.toLowerCase(); if (!/^bc1[02-9ac-hj-np-z]{8,87}$/.test(a) || a.length > 90) return false;
+  const CS = "qpzry9x8gf2tvdw0s3jn54khce6mua7l", data = [...a.slice(3)].map(c => CS.indexOf(c));
+  const G = [0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3]; let chk = 1;
+  for (const v of [3, 3, 0, 2, 3, ...data]) { const b = chk >>> 25; chk = ((chk & 0x1ffffff) << 5) ^ v; for (let i = 0; i < 5; i++) if ((b >> i) & 1) chk ^= G[i]; }
+  const ver = data[0], prog = data.length - 7;          // 5-bit groups of the witness program
+  if (ver > 16) return false;
+  const len = Math.floor(prog * 5 / 8);
+  if (ver === 0) return chk === 1 && (len === 20 || len === 32);
+  return chk === 0x2bc830a3 && len >= 2 && len <= 40;
+}
+const isBtc = a => isBtcBase58(a) || isBtcBech32(a);
+function isSol(a){ if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)) return false; const b = b58decode(a); return !!b && b.length === 32; }
+// Order matters: a valid Bitcoin base58check address is never treated as Solana
+const addrType = a => isAddr(a) ? "evm" : isBtc(a) ? "btc" : isSol(a) ? "sol" : null;
+const ADDR_HELP = "Supported: EVM 0x + 40 hex, Bitcoin 1… / 3… / bc1q… / bc1p…, or Solana (base58, 32–44 characters). Bitcoin xpubs are not supported.";
+const altKey = (type, a) => type === "btc" && /^bc1/i.test(a) ? a.toLowerCase() : a;   // bech32 is case-insensitive; base58 is not
+
 // ---- Parsing / import ----
 function parseList(text){
   const out = []; let bad = 0;
   for (let line of text.split(/\r?\n/)) {
     line = line.trim(); if (!line || line.startsWith("#")) continue;
-    const m = line.match(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/);
+    let m = line.match(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/);
+    if (!m) {   // Bitcoin / Solana: first separator-delimited token that is a valid address
+      const re = /[^\s,;\t|"]+/g; let t;
+      while ((t = re.exec(line))) if (isBtc(t[0]) || isSol(t[0])) { m = t; break; }
+    }
     if (!m) { if (!/^label\s*[,;\t]/i.test(line) && !/^address/i.test(line)) bad++; continue; }
     const address = m[0];
     let label = (line.slice(0, m.index) + " " + line.slice(m.index + address.length))
@@ -441,7 +523,14 @@ function parseList(text){
 function addWallets(items){
   let added = 0, dup = 0;
   const seen = new Set(wallets.map(w => w.address.toLowerCase()));
+  const aseen = new Set(altWallets.map(w => altKey(w.type, w.address)));
   for (const it of items) {
+    const type = addrType(it.address);
+    if (type === "btc" || type === "sol") {
+      const k = altKey(type, it.address);
+      if (aseen.has(k)) { dup++; const w = altWallets.find(w => altKey(w.type, w.address) === k); if (it.label && !w.label) w.label = it.label.slice(0,60); continue; }
+      aseen.add(k); altWallets.push({label: (it.label||"").slice(0,60), address: type === "btc" && /^bc1/i.test(it.address) ? it.address.toLowerCase() : it.address, type}); added++; continue;
+    }
     if (!isAddr(it.address)) continue;
     const k = it.address.toLowerCase();
     if (seen.has(k)) { dup++; const w = wallets.find(w=>w.address.toLowerCase()===k); if (it.label && !w.label) w.label = it.label; continue; }
@@ -452,7 +541,9 @@ function addWallets(items){
 function importText(text){
   const {items, bad} = parseList(text);
   const {added, dup} = addWallets(items);
-  toast(`Added ${added}` + (dup?`, ${dup} duplicate${dup>1?"s":""} skipped`:"") + (bad?`, ${bad} invalid line${bad>1?"s":""}`:""));
+  const by = {evm:0, btc:0, sol:0}; for (const it of items) { const t = addrType(it.address); if (t) by[t]++; }
+  const kinds = Object.entries(by).filter(([,n]) => n).map(([t,n]) => `${n} ${({evm:"EVM", btc:"Bitcoin", sol:"Solana"})[t]}`).join(", ");
+  toast(`Added ${added}` + (kinds && added ? ` (found ${kinds})` : "") + (dup?`, ${dup} duplicate${dup>1?"s":""} skipped`:"") + (bad?`, ${bad} invalid line${bad>1?"s":""} skipped (${ADDR_HELP})`:""));
   render(); if (added) requestRefresh();
 }
 
@@ -598,6 +689,81 @@ async function loadChain(chain, addrs, myRun){
   }
   renderBody();
 }
+// ---- Bitcoin and Solana balances ----
+// Bitcoin: Esplora REST (mempool.space, then blockstream.info). Balance = confirmed + mempool (funded − spent), in sats.
+const BTC_APIS = [["mempool.space", "https://mempool.space/api/address/"], ["blockstream.info", "https://blockstream.info/api/address/"]];
+const BTC_CONCURRENCY = 2, BTC_GAP_MS = 150;   // ≈ 10 requests/s at most, so 100 addresses take ~10 s without tripping rate limits
+// Solana: getMultipleAccounts (up to 100 accounts per request, one request per 100 wallets); a missing account is 0 SOL.
+const SOL_RPCS = ["https://solana-rpc.publicnode.com", "https://solana.api.pocket.network", "https://solana-mainnet.gateway.tatum.io"];
+const SOL_CHUNK = 100;
+const ALT = {
+  btc: {name:"Bitcoin", sym:"BTC", dec:8, dp:8, color:["#C2660A","#F7931A"],
+        ex:[["mempool.space","https://mempool.space/address/"],["Blockstream","https://blockstream.info/address/"]]},
+  sol: {name:"Solana", sym:"SOL", dec:9, dp:6, color:["#7B3FE4","#B07CFF"],
+        ex:[["Solscan","https://solscan.io/account/"],["Solana Explorer","https://explorer.solana.com/address/"]]},
+};
+let altRes = {btc:{}, sol:{}};   // altRes[type][address] = {state, v:BigInt (sats / lamports), via, conf, mem | msg}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function getJSONt(url){
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  try { const r = await fetch(url, {signal: ctl.signal, cache: "no-store"}); if (!r.ok) { const e = new Error("HTTP " + r.status); e.status = r.status; throw e; } return await r.json(); }
+  catch(e){ if (e.name === "AbortError") throw new Error("timeout"); throw e; }
+  finally { clearTimeout(t); }
+}
+async function fetchBtcOne(addr){
+  const errs = [];
+  for (const [host, base] of BTC_APIS) {
+    for (let tries = 0; tries < 2; tries++) {
+      try {
+        const d = await getJSONt(base + addr);
+        const cs = d && d.chain_stats, ms = d && d.mempool_stats;
+        if (!cs || !ms) throw new Error("unexpected response");
+        const conf = BigInt(cs.funded_txo_sum) - BigInt(cs.spent_txo_sum), mem = BigInt(ms.funded_txo_sum) - BigInt(ms.spent_txo_sum);
+        return {state:"ok", v: conf + mem, conf, mem, via: host};
+      } catch(e) {
+        errs.push(host + ": " + (e.message || "network/CORS error"));
+        if (e.status === 429 && !tries) { await sleep(2500); continue; }   // rate limited: back off once, then fall back
+        break;
+      }
+    }
+  }
+  return {state:"err", msg: errs.join("\n")};
+}
+async function loadBtc(myRun){
+  const list = altWallets.filter(w => w.type === "btc").map(w => w.address);
+  let next = 0;
+  async function worker(){
+    while (next < list.length) {
+      const a = list[next++];
+      const r = await fetchBtcOne(a);
+      if (myRun !== runId) return;
+      altRes.btc[a] = r; renderAlt();
+      await sleep(BTC_GAP_MS);
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(BTC_CONCURRENCY, list.length)}, worker));
+}
+async function loadSol(myRun){
+  let pending = altWallets.filter(w => w.type === "sol").map(w => w.address); const errs = [];
+  for (const url of SOL_RPCS) {
+    if (!pending.length) break;
+    const host = new URL(url).host;
+    for (let i = 0; i < pending.length; i += SOL_CHUNK) {
+      const chunk = pending.slice(i, i + SOL_CHUNK);
+      try {
+        const r = await postJSON(url, {jsonrpc:"2.0", id:1, method:"getMultipleAccounts", params:[chunk, {encoding:"base64", dataSlice:{offset:0, length:0}}]});
+        const vals = r && r.result && r.result.value;
+        if (!Array.isArray(vals) || vals.length !== chunk.length) throw new Error((r && r.error && r.error.message) || "unexpected response");
+        vals.forEach((acc, j) => { altRes.sol[chunk[j]] = {state:"ok", v: acc ? BigInt(acc.lamports) : 0n, via: host}; });
+      } catch(e){ errs.push(host + ": " + e.message); }
+      if (myRun !== runId) return;
+    }
+    pending = pending.filter(a => !altRes.sol[a] || altRes.sol[a].state !== "ok");
+    renderAlt();
+  }
+  for (const a of pending) altRes.sol[a] = {state:"err", msg: errs.join("\n") || "all RPCs failed"};
+  renderAlt();
+}
 let lastRefreshAt = 0, refreshTimer = null, loading = false;
 // Rate-limited entry point for the button, R key, and wallet changes
 function requestRefresh(){
@@ -618,17 +784,19 @@ async function refresh(){
   const addrs = wallets.map(w => w.address);
   const active = CHAINS.filter(c => enabled[c.id]);
   results = {}; wres = {};
+  altRes = {btc:{}, sol:{}}; for (const w of altWallets) altRes[w.type][w.address] = {state:"loading"};
   for (const c of CHAINS) { results[c.id] = {}; for (const a of addrs) results[c.id][a.toLowerCase()] = {state: enabled[c.id] ? "loading" : "idle"};
     if (c.weth) { wres[c.id] = {}; for (const a of addrs) wres[c.id][a.toLowerCase()] = {state: enabled[c.id] ? "loading" : "idle"}; } }
   $("#updated").className = "pill"; $("#updated").textContent = "Loading…";
   renderBody();
   renderPrices();
   const stagger = (c, i) => new Promise(r => setTimeout(r, i * STAGGER_MS)).then(() => myRun === runId && loadChain(c, addrs, myRun));
-  await Promise.all([loadPrices(myRun), loadFx(myRun), ...(addrs.length ? active.map(stagger) : [])]);
+  await Promise.all([loadPrices(myRun), loadFx(myRun), loadBtc(myRun), loadSol(myRun), ...(addrs.length ? active.map(stagger) : [])]);
   if (myRun !== runId) return;
   loading = false; updateRefreshBtn();
   renderPrices(); renderBody();
-  const failed = active.reduce((n,c)=>n+Object.values(results[c.id]).filter(r=>r.state==="err").length,0);
+  const failed = active.reduce((n,c)=>n+Object.values(results[c.id]).filter(r=>r.state==="err").length,0)
+    + Object.values(altRes.btc).concat(Object.values(altRes.sol)).filter(r => r.state === "err").length;
   const now = new Date();
   $("#updated").textContent = "Updated " + now.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"medium"}) + (failed?` · ${failed} failed`:"");
   $("#updated").className = "pill " + (failed ? "bad" : "good");
@@ -763,8 +931,8 @@ function renderBody(){
   renderHead(cs);
   const tb = $("#tbl tbody"), tf = $("#tbl tfoot");
   if (!wallets.length) {
-    tb.innerHTML = `<tr><td colspan="${cs.length+2}" class="empty" style="text-align:center">No wallets yet. Open <b>Wallets: add, import, export</b> above to add some.</td></tr>`;
-    tf.innerHTML = ""; return;
+    tb.innerHTML = `<tr><td colspan="${cs.length+2}" class="empty" style="text-align:center">${altWallets.length ? "No EVM wallets in your list." : "No wallets yet."} Open <b>Wallets: add, import, export</b> above to add some.</td></tr>`;
+    tf.innerHTML = ""; renderAlt(); return;
   }
   // heat shading: log scale of each cell's USD vs the largest single cell / wallet total
   let maxCell = 0, maxWallet = 0;
@@ -799,8 +967,80 @@ function renderBody(){
       return `<td class="cc ${sum===0n?"z":"nz"}" style="${colorVars(c)}" title="${fullWei(nsum)} ${c.sym}${wsum ? ` + ${fullWei(wsum)} WETH` : ""}${bad?` (excludes ${bad} failed)`:""}${wbad?` (WETH excludes ${wbad} failed)`:""}">${sum===0n?'<span class="zero">—</span>':(nsum===0n?'<span class="zero">—</span>':`<span class="amt">${fmtWei(nsum)}</span>`)}${bad||wbad?' <span class="err" title="Partial: some wallets failed">*</span>':""}${wsum ? wethLine(wsum, c, null, null) : ""}${uh}</td>`;
     }).join("")}</tr>`;
   } else tf.innerHTML = "";
+  renderAlt();
 }
 function render(){ renderChips(); renderBody(); }
+// Bitcoin / Solana tables (same row tools as EVM: rename, copy, explorer menu, remove)
+const fmtUnits = (v, dec, dp) => { const base = 10n ** BigInt(dec), q = 10n ** BigInt(dec - dp);
+  let r = (v + q / 2n) / q; const ip = r / (10n ** BigInt(dp)), fp = (r % (10n ** BigInt(dp))).toString().padStart(dp, "0").replace(/0+$/, "");
+  return ip.toLocaleString("en-US") + (fp ? "." + fp : ""); };
+const fullUnits = (v, dec) => { const base = 10n ** BigInt(dec); const f = (v % base).toString().padStart(dec, "0").replace(/0+$/, ""); return (v / base).toString() + (f ? "." + f : ""); };
+const altUsd = (v, t) => prices[ALT[t].sym] ? Number(v) / 10 ** ALT[t].dec * prices[ALT[t].sym].usd : null;
+const altColor = t => `--cl:${ALT[t].color[0]};--cd:${ALT[t].color[1]}`;
+function altSum(t){   // {sum, loading, missing, priced} like usdSumVal
+  let sum = 0, loadingAny = false, missing = [], priced = 0;
+  for (const w of altWallets.filter(w => w.type === t)) {
+    const r = altRes[t][w.address];
+    if (!r || r.state === "loading") { loadingAny = true; continue; }
+    if (r.state === "err") { missing.push((w.label || short(w.address)) + " (balance error)"); continue; }
+    if (r.v === 0n) { priced++; continue; }
+    const u = altUsd(r.v, t); if (u === null) { if (priceState !== "done") loadingAny = true; else missing.push(ALT[t].sym + " price n/a"); continue; }
+    sum += u; priced++;
+  }
+  return {sum, loading: loadingAny, missing, priced};
+}
+const sumHtml = v => v.loading ? `<span class="spin"></span>` : (!v.priced && v.missing.length) ? `<span class="na" title="${esc(v.missing.join(", "))}">${naTxt()}</span>`
+  : `<span title="${esc(v.missing.length ? "Excludes: " + v.missing.join(", ") : "Sum")}">${fmtUsd(v.sum)}</span>${v.missing.length ? ` <span class="err" title="${esc("Excludes: " + v.missing.join(", "))}">*</span>` : ""}`;
+function renderAlt(){
+  const box = $("#altTables"); if (!box) return;
+  $("#evmTitle").hidden = !altWallets.length;
+  box.innerHTML = ["btc", "sol"].map(t => {
+    const idx = altWallets.map((w, i) => i).filter(i => altWallets[i].type === t); if (!idx.length) return "";
+    const A = ALT[t], key = i => { const r = altRes[t][altWallets[i].address]; return r && r.state === "ok" ? Number(r.v) : null; };
+    if (opts.sortCol !== "orig") idx.sort((a, b) => (key(a) === null) - (key(b) === null) || (key(b) ?? 0) - (key(a) ?? 0) || a - b);
+    const vals = idx.map(i => { const r = altRes[t][altWallets[i].address]; return r && r.state === "ok" && r.v > 0n ? altUsd(r.v, t) : null; });
+    const max = Math.max(0, ...vals.filter(v => v !== null));
+    const tint = u => (u === null || !(u > 0) || !(max > 0)) ? 0 : Math.round(4 + 22 * Math.log10(1 + u) / Math.log10(1 + max));
+    const pr = prices[A.sym] ? `<span class="sym">${fmtPrice(prices[A.sym].usd)}</span>` : (priceState === "done" ? `<span class="sym na">price n/a</span>` : "");
+    const rows = idx.map((i, n) => {
+      const w = altWallets[i], r = altRes[t][w.address], ex = `<a class="ex" href="${esc(A.ex[0][1] + w.address)}" target="_blank" rel="noopener" title="Open on ${esc(A.ex[0][0])}">${EX_ICON}</a>`;
+      let c;
+      if (!r || r.state === "loading") c = `<td><span class="spin" aria-label="loading"></span></td>`;
+      else if (r.state === "err") c = `<td><span class="err" title="${esc(r.msg)}">⚠ error</span>${ex}</td>`;
+      else if (r.v === 0n) c = `<td class="z"><span class="zero" title="0 (via ${esc(r.via)})">—</span>${ex}</td>`;
+      else { const u = altUsd(r.v, t), h = tint(u), s = fmtUnits(r.v, A.dec, A.dp);
+        const ttl = `${fullUnits(r.v, A.dec)} ${A.sym}` + (t === "btc" ? ` (confirmed ${fullUnits(r.conf, 8)} + mempool ${fullUnits(r.mem, 8)})` : "") + ` (via ${r.via})`;
+        c = `<td class="cc nz" style="${altColor(t)}${h ? `;--h:${h}%` : ""}"><span class="amt" title="${esc(ttl)}">${s === "0" ? "&lt;" + (1 / 10 ** A.dp).toFixed(A.dp) : s}</span>${ex}`
+          + (u !== null ? `<span class="usd">${fmtUsd(u)}</span>` : priceState === "done" ? `<span class="usd na" title="Price unavailable">${naTxt()}</span>` : `<span class="usd">…</span>`) + `</td>`; }
+      const one = altSum(t); const tot = r && r.state === "ok" ? (r.v === 0n ? fmtUsd(0) : (altUsd(r.v, t) !== null ? fmtUsd(altUsd(r.v, t)) : naTxt())) : (r && r.state === "err" ? `<span class="na">${naTxt()}</span>` : `<span class="spin"></span>`);
+      const ph = tint(r && r.state === "ok" && r.v > 0n ? altUsd(r.v, t) : null);
+      return `<tr><td><div class="walletcell"><div class="meta">
+      <span class="label" data-aedit="${i}" title="Click to rename">${w.label ? esc(w.label) : `<span class="zero">${A.name} wallet ${n+1}</span>`}</span>
+      <span class="addr" title="${esc(w.address)}">${short(w.address)}
+        <button class="btn ghost small" data-acopy="${i}" title="Copy address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn ghost small" data-aexplore="${i}" title="Open in a block explorer" aria-haspopup="menu">${EX_ICON}</button></span></div>
+      <button class="btn ghost small" data-adel="${i}" title="Remove wallet">✕</button></div></td>
+      <td class="usdcol"${ph ? ` style="--h:${ph}%"` : ""}>${tot}</td>${c}</tr>`;
+    }).join("");
+    const all = altSum(t);
+    const foot = opts.totals && idx.length > 1 ? (() => {
+      const rs = idx.map(i => altRes[t][altWallets[i].address]); if (rs.some(r => !r || r.state === "loading")) return `<tr><td>Total</td><td class="usdcol"><span class="spin"></span></td><td><span class="spin"></span></td></tr>`;
+      const ok = rs.filter(r => r.state === "ok"), bad = rs.length - ok.length, sum = ok.reduce((s, r) => s + r.v, 0n);
+      return `<tr><td>Total</td><td class="usdcol">${sumHtml(all)}</td><td class="cc ${sum === 0n ? "z" : "nz"}" style="${altColor(t)}" title="${fullUnits(sum, A.dec)} ${A.sym}${bad ? ` (excludes ${bad} failed)` : ""}">${sum === 0n ? '<span class="zero">—</span>' : `<span class="amt">${fmtUnits(sum, A.dec, A.dp)}</span>`}${bad ? ' <span class="err" title="Partial: some wallets failed">*</span>' : ""}</td></tr>`; })() : "";
+    return `<h2 class="sect cc" style="${altColor(t)}"><span class="dot"></span>${A.name} <span class="note">(${idx.length} wallet${idx.length > 1 ? "s" : ""}, native ${A.sym} only)</span></h2>
+    <div class="tablewrap"><table class="alt" data-type="${t}"><thead><tr><th>Wallet (${idx.length})</th><th class="usdcol">Total ${cur()}<span class="sym">${A.name}</span></th><th class="cc" style="${altColor(t)}"><span class="thname"><span class="dot"></span>${A.name}</span><span class="sym">${A.sym}</span>${pr}</th></tr></thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`;
+  }).join("");
+  renderGrand();
+}
+// All-wallet total (EVM + Bitcoin + Solana), shown when Bitcoin or Solana wallets exist
+function renderGrand(){
+  const g = $("#grand"); if (!g) return;
+  if (!altWallets.length) { g.hidden = true; g.innerHTML = ""; return; }
+  const cs = visibleChains(), all = []; for (const c of cs) for (const w of wallets) all.push([c, res(c, w.address.toLowerCase())]);
+  const parts = [["EVM", wallets.length ? usdSumVal(all) : null], ["Bitcoin", altWallets.some(w => w.type === "btc") ? altSum("btc") : null], ["Solana", altWallets.some(w => w.type === "sol") ? altSum("sol") : null]].filter(p => p[1]);
+  const tot = {sum: parts.reduce((s, p) => s + p[1].sum, 0), loading: parts.some(p => p[1].loading), missing: parts.flatMap(p => p[1].missing), priced: parts.reduce((s, p) => s + p[1].priced, 0)};
+  g.hidden = false;
+  g.innerHTML = `<b>All wallets (${cur()})</b> <span class="gt" id="grandTotal">${sumHtml(tot)}</span>` + parts.map(([n, v]) => `<span class="gp" data-part="${n}">${n} <b>${sumHtml(v)}</b></span>`).join("");
+}
 
 // ---- Reordering (pointer events: mouse drags anywhere on a chip/header, touch uses the ⠿ grip) ----
 function moveChain(id, toIndex){
@@ -905,20 +1145,23 @@ $("#showWeth").onchange = e => { opts.showWeth = e.target.checked; valueOrderCac
 $("#hideZero").onchange = e => { opts.hideZero = e.target.checked; save(); renderBody(); };
 $("#addBtn").onclick = () => {
   const a = $("#addAddr").value.trim(), l = $("#addLabel").value.trim();
-  if (!isAddr(a)) { toast("Not a valid address (0x + 40 hex characters)"); $("#addAddr").focus(); return; }
+  const type = addrType(a);
+  if (!type) { toast("Not a valid address. " + ADDR_HELP); $("#addAddr").setAttribute("aria-invalid", "true"); $("#addAddr").title = ADDR_HELP; $("#addAddr").focus(); return; }
+  $("#addAddr").removeAttribute("aria-invalid");
   const {added} = addWallets([{label:l, address:a}]);
   if (!added) { toast("Already in your list"); return; }
-  $("#addAddr").value = ""; $("#addLabel").value = ""; toast("Wallet added"); render(); requestRefresh();
+  $("#addAddr").value = ""; $("#addLabel").value = ""; toast({evm:"EVM", btc:"Bitcoin", sol:"Solana"}[type] + " wallet added"); render(); requestRefresh();
 };
 $("#addAddr").addEventListener("keydown", e => { if (e.key === "Enter") $("#addBtn").click(); });
 $("#importBtn").onclick = () => { const t = $("#bulk").value; if (!t.trim()) { toast("Paste some addresses first"); return; } importText(t); $("#bulk").value = ""; };
 $("#fileIn").onchange = async e => { const f = e.target.files[0]; if (!f) return; importText(await f.text()); e.target.value = ""; };
 function download(name, text, type){ const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text],{type})); a.download = name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000); }
-$("#exportCsv").onclick = () => { if (!wallets.length) return toast("Nothing to export");
-  download("wallets.csv", "label,address\n" + wallets.map(w => `"${(w.label||"").replace(/"/g,'""')}",${w.address}`).join("\n") + "\n", "text/csv"); };
-$("#exportTxt").onclick = async () => { const t = wallets.map(w => (w.label ? w.label + "," : "") + w.address).join("\n");
+const allWallets = () => wallets.concat(altWallets);
+$("#exportCsv").onclick = () => { if (!allWallets().length) return toast("Nothing to export");
+  download("wallets.csv", "label,address\n" + allWallets().map(w => `"${(w.label||"").replace(/"/g,'""')}",${w.address}`).join("\n") + "\n", "text/csv"); };
+$("#exportTxt").onclick = async () => { const t = allWallets().map(w => (w.label ? w.label + "," : "") + w.address).join("\n");
   try { await navigator.clipboard.writeText(t); toast("List copied to clipboard"); } catch { $("#bulk").value = t; toast("Copied into the text box"); } };
-$("#clearAll").onclick = () => { if (!wallets.length) return; if (confirm(`Remove all ${wallets.length} wallets from this tracker?`)) { wallets = []; save(); results = {}; render(); } };
+$("#clearAll").onclick = () => { const n = allWallets().length; if (!n) return; if (confirm(`Remove all ${n} wallets from this tracker?`)) { wallets = []; altWallets = []; save(); results = {}; altRes = {btc:{}, sol:{}}; render(); } };
 $("#tbl").addEventListener("click", async e => {
   const t = e.target.closest("[data-copy],[data-del],[data-edit],[data-explore]"); if (!t) return;
   if (t.dataset.explore) { e.stopPropagation(); openExplorerMenu(t, wallets[+t.dataset.explore]); }
@@ -927,14 +1170,22 @@ $("#tbl").addEventListener("click", async e => {
   else if (t.dataset.edit) { const w = wallets[+t.dataset.edit]; const v = prompt("Label for " + w.address, w.label || ""); if (v !== null) { w.label = v.trim().slice(0,60); save(); renderBody(); } }
 });
 
+$("#altTables").addEventListener("click", async e => {
+  const t = e.target.closest("[data-acopy],[data-adel],[data-aedit],[data-aexplore]"); if (!t) return;
+  const d = t.dataset, w = altWallets[+(d.acopy ?? d.adel ?? d.aedit ?? d.aexplore)]; if (!w) return;
+  if (d.aexplore !== undefined) { e.stopPropagation(); openExplorerMenu(t, w, ALT[w.type].ex.map(([n, u]) => ({name: ALT[w.type].name, ex: n, url: u + w.address, style: altColor(w.type)}))); }
+  else if (d.acopy !== undefined) { try { await navigator.clipboard.writeText(w.address); toast("Address copied"); } catch { prompt("Copy address:", w.address); } }
+  else if (d.adel !== undefined) { if (confirm(`Remove ${w.label || short(w.address)}?`)) { altWallets.splice(+d.adel, 1); save(); renderBody(); } }
+  else if (d.aedit !== undefined) { const v = prompt("Label for " + w.address, w.label || ""); if (v !== null) { w.label = v.trim().slice(0,60); save(); renderBody(); } }
+});
 // Row explorer menu: one link per enabled chain (in column order) that has a known explorer
 function closeExplorerMenu(){ const m = $("#exMenu"); if (m) m.remove(); }
-function openExplorerMenu(btn, w){
+function openExplorerMenu(btn, w, links){
   const had = $("#exMenu"); closeExplorerMenu(); if (had && had.dataset.addr === w.address) return;   // second click closes
-  const items = visibleChains().filter(c => EXPLORERS[c.id]);
+  const items = links || visibleChains().filter(c => EXPLORERS[c.id]).map(c => ({name: c.name, ex: EXPLORERS[c.id][0], url: explorerUrl(c.id, w.address), style: colorVars(c)}));
   const m = document.createElement("div"); m.id = "exMenu"; m.className = "exmenu"; m.setAttribute("role", "menu"); m.dataset.addr = w.address;
-  m.innerHTML = `<div class="exhead">${esc(w.label || short(w.address))} on…</div>` + items.map(c =>
-    `<a role="menuitem" class="cc" style="${colorVars(c)}" href="${esc(explorerUrl(c.id, w.address))}" target="_blank" rel="noopener"><span class="dot"></span><span>${esc(c.name)}</span><span class="exn">${esc(EXPLORERS[c.id][0])}</span></a>`).join("");
+  m.innerHTML = `<div class="exhead">${esc(w.label || short(w.address))} on…</div>` + items.map(it =>
+    `<a role="menuitem" class="cc" style="${it.style}" href="${esc(it.url)}" target="_blank" rel="noopener"><span class="dot"></span><span>${esc(it.name)}</span><span class="exn">${esc(it.ex)}</span></a>`).join("");
   document.body.appendChild(m);
   const r = btn.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - mw - 8)) + "px";
@@ -946,8 +1197,32 @@ document.addEventListener("click", e => { if (!e.target.closest("#exMenu,[data-e
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeExplorerMenu(); });
 addEventListener("scroll", closeExplorerMenu, true); addEventListener("resize", closeExplorerMenu);
 
+// Floating arrow: points down (scroll to bottom) unless within 80px of the bottom, then up (back to top). Hidden if the page doesn't scroll.
+(function(){
+  const fab = $("#scrollFab"), NEAR = 80; let raf = 0;
+  const maxY = () => Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  function update(){
+    raf = 0;
+    const m = maxY(); fab.hidden = m < 2;
+    const up = m > 0 && window.scrollY >= m - NEAR;
+    if (fab.classList.contains("up") !== up || !fab.dataset.dir) {
+      fab.classList.toggle("up", up); fab.dataset.dir = up ? "up" : "down";
+      const t = up ? "Back to top" : "Scroll to bottom"; fab.setAttribute("aria-label", t); fab.title = t;
+    }
+  }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+  window.addEventListener("scroll", schedule, {passive: true});
+  window.addEventListener("resize", schedule);
+  if (window.ResizeObserver) new ResizeObserver(schedule).observe(document.body);
+  fab.addEventListener("click", () => {
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({top: fab.classList.contains("up") ? 0 : maxY(), behavior: smooth ? "smooth" : "auto"});
+  });
+  update();
+})();
+altWallets = altWallets.map(w => ({label: String(w.label||"").slice(0,60), address: w.address, type: addrType(w.address)})).filter(w => w.type === "btc" || w.type === "sol");
 render(); renderCurrency();
-if (wallets.length === 0) $("#manage").open = true;
+if (wallets.length + altWallets.length === 0) $("#manage").open = true;
 refresh();
 </script>
 </body>

@@ -66,6 +66,9 @@ tfoot td{font-weight:600;border-top:2px solid var(--border);border-bottom:none}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .note{font-size:12px;color:var(--muted)}
 .usd{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.wline{display:block;font-size:11px;color:var(--muted);font-weight:400;white-space:nowrap}
+.wline .wamt{font-weight:600;color:var(--text)}
+.wline.werr{color:var(--err);opacity:.8;cursor:help}
 .na{color:var(--err)!important;opacity:.85}
 th .sym.na{font-weight:500}
 .usdcol{font-weight:600;border-right:1px solid var(--border)}
@@ -185,6 +188,7 @@ Main,0xYourWalletAddress
         <label class="chip opt"><input type="checkbox" id="byValue"> Sort chains by value</label>
         <label class="chip opt"><input type="checkbox" id="totalsToggle"> Show totals row</label>
         <label class="chip opt"><input type="checkbox" id="hideZero"> Hide all-zero chains</label>
+        <label class="chip opt" title="Add each wallet's WETH (priced at ETH) on ETH chains"><input type="checkbox" id="showWeth"> Show WETH</label>
         <button class="btn small" id="origOrder" title="Show wallets in the order you added them">Original row order</button>
         <button class="btn small" id="resetOrder" title="Restore the default chain order">Reset order</button>
       </div>
@@ -222,6 +226,7 @@ const CHAINS = [
   {id:"xlayer",    name:"X Layer",   sym:"OKB",  rpcs:["https://rpc.xlayer.tech","https://xlayerrpc.okx.com","https://196.rpc.thirdweb.com"]},
   {id:"berachain", name:"Berachain", sym:"BERA", rpcs:["https://rpc.berachain.com","https://berachain-rpc.publicnode.com","https://rpc.berachain-apis.com"]},
   {id:"morph",     name:"Morph",     sym:"ETH",  rpcs:["https://rpc-quicknode.morph.network","https://rpc.morph.network","https://rpc-bgw.morph.network"]},
+  {id:"blast",     name:"Blast",     sym:"ETH",  rpcs:["https://rpc.blast.io","https://blast-rpc.publicnode.com","https://blast.drpc.org"]},
 ];
 // Brand accents: [light-mode shade with readable contrast on white, dark-mode shade]
 const COLORS = {eth:["#5A73DB","#8A9EF0"], bsc:["#B88A00","#F0B90B"], base:["#0052FF","#5C8DFF"], arb:["#1B86D1","#28A0F0"],
@@ -229,7 +234,7 @@ const COLORS = {eth:["#5A73DB","#8A9EF0"], bsc:["#B88A00","#F0B90B"], base:["#00
   zksync:["#5F60D8","#8C8DFC"], linea:["#0A8FB0","#61DFFF"], gnosis:["#04795B","#3CC59A"], abstract:["#00A35C","#00FF94"],
   plasma:["#295B4F","#569F8C"], robinhood:["#6B8500","#CCFF00"],
   hyperevm:["#0F8A73","#97FCE4"], monad:["#6E54F5","#9C8BFB"], xlayer:["#1F2328","#E6E8EB"],
-  berachain:["#9A5A2C","#E8A86A"], morph:["#118A00","#4CD137"]};
+  berachain:["#9A5A2C","#E8A86A"], morph:["#118A00","#4CD137"], blast:["#7A7A00","#FCFC03"]};
 for (const c of CHAINS) c.color = COLORS[c.id] || ["#6b7280","#9aa3b2"];
 // Official block explorers: [name, address-page base]. Each pattern was checked with curl (200, a redirect to this
 // final URL, or a Cloudflare 403 challenge). A chain without an entry simply gets no link.
@@ -244,9 +249,28 @@ const EXPLORERS = {
   hyperevm:["HyperEVMScan","https://hyperevmscan.io/address/"], monad:["MonadScan","https://monadscan.com/address/"],
   xlayer:["OKLink X Layer","https://www.oklink.com/x-layer/evm/address/"], berachain:["Berascan","https://berascan.com/address/"],
   morph:["Morph Explorer","https://explorer.morph.network/address/"],
+  blast:["Blastscan","https://blastscan.io/address/"],
 };
 const explorerUrl = (chainId, addr) => EXPLORERS[chainId] ? EXPLORERS[chainId][1] + addr : null;
+// Canonical WETH per ETH-native chain, each verified on-chain (eth_getCode, symbol() = "WETH", decimals() = 18).
+// tok: explorer page for this token filtered to one holder (Etherscan-family "?a="); null -> wallet address page.
+const WETH = {
+  eth:      {a:"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", tok:"https://etherscan.io/token/"},
+  base:     {a:"0x4200000000000000000000000000000000000006", tok:"https://basescan.org/token/"},
+  arb:      {a:"0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", tok:"https://arbiscan.io/token/"},
+  op:       {a:"0x4200000000000000000000000000000000000006", tok:"https://optimistic.etherscan.io/token/"},
+  scroll:   {a:"0x5300000000000000000000000000000000000004", tok:"https://scrollscan.com/token/"},
+  zksync:   {a:"0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91", tok:null},
+  linea:    {a:"0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f", tok:"https://lineascan.build/token/"},
+  abstract: {a:"0x3439153EB7AF838Ad19d56E1571FBD09333C2809", tok:"https://abscan.org/token/"},
+  robinhood:{a:"0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73", tok:null},
+  morph:    {a:"0x5300000000000000000000000000000000000011", tok:null},
+  blast:    {a:"0x4300000000000000000000000000000000000004", tok:"https://blastscan.io/token/"},
+};
+for (const c of CHAINS) if (WETH[c.id] && c.sym === "ETH") c.weth = WETH[c.id].a;
+const wethUrl = (chainId, addr) => WETH[chainId] && WETH[chainId].tok ? WETH[chainId].tok + WETH[chainId].a + "?a=" + addr : explorerUrl(chainId, addr);
 const EX_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>`;
+const wethLink = (c, addr) => { const u = wethUrl(c.id, addr); return u ? `<a class="ex" href="${esc(u)}" target="_blank" rel="noopener" title="WETH for this wallet on ${esc(EXPLORERS[c.id][0])}">${EX_ICON}</a>` : ""; };
 const exLink = (c, addr) => { const u = explorerUrl(c.id, addr); return u ? `<a class="ex" href="${esc(u)}" target="_blank" rel="noopener" title="Open on ${esc(EXPLORERS[c.id][0])}" aria-label="Open on ${esc(EXPLORERS[c.id][0])}">${EX_ICON}</a>` : ""; };
 // ---- USD prices: CoinGecko first, then Coinbase, then Binance (USDT pairs). All free, no key, CORS "*". ----
 const COINS = {
@@ -350,7 +374,7 @@ function renderPrices(){
 const LS = {wallets:"nbt.wallets.v1", chains:"nbt.chains.v1", opts:"nbt.opts.v1", seeded:"nbt.seeded.v1"};
 const BATCH = 10, TIMEOUT_MS = 12000, DP = 6;
 // Multicall3: one eth_call returns every wallet's native balance on a chain.
-// Verified (eth_getCode + values equal to eth_getBalance) on all 19 chains. zkSync Era and Abstract use the
+// Verified (eth_getCode + values equal to eth_getBalance) on all 20 chains. zkSync Era and Abstract use the
 // native zkSync deployment (chain.mc); every other chain uses the canonical address below.
 const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const MC_CHUNK = 250;          // addresses per eth_call (300 tested OK on every endpoint)
@@ -364,7 +388,7 @@ localStorage.setItem(LS.seeded, "1");
 let enabled = load(LS.chains, null);
 if (!enabled || typeof enabled !== "object") enabled = Object.fromEntries(CHAINS.map(c => [c.id, true]));
 for (const c of CHAINS) if (!(c.id in enabled)) enabled[c.id] = true;
-let opts = Object.assign({totals:true, hideZero:false, sortCol:"usd", sortDir:"desc", chainsByValue:false, currency:"USD"}, load(LS.opts, {}));
+let opts = Object.assign({totals:true, hideZero:false, sortCol:"usd", sortDir:"desc", chainsByValue:false, currency:"USD", showWeth:true}, load(LS.opts, {}));
 if (opts.currency !== "MYR") opts.currency = "USD";
 if (opts.sortCol !== "usd" && opts.sortCol !== "orig" && !CHAINS.some(c => c.id === opts.sortCol)) opts.sortCol = "usd";
 // Manual column order (persisted). Unknown ids dropped; chains added later append at the end.
@@ -377,6 +401,7 @@ function saveOrder(){ localStorage.setItem(LS_ORDER, JSON.stringify(order)); }
 saveOrder();
 // results[chainId][addrLower] = {state:'loading'|'ok'|'err', wei:BigInt, msg}
 let results = {};
+let wres = {};   // WETH: wres[chainId][addrLower] = {state, wei, via|msg}
 let runId = 0;
 save();
 
@@ -473,13 +498,29 @@ async function fetchBatch(rpc, addrs){
   if (got.size === 0) { const e2 = await fetchSingles(url, addrs, got); if (got.size) lastErr = e2; else lastErr = lastErr || e2; }
   return {got, err: got.size === addrs.length ? null : lastErr};
 }
+// Fallback for WETH: batched eth_call balanceOf (one by one if the endpoint refuses batches)
+async function fetchWethBatch(rpc, weth, addrs){
+  const url = typeof rpc === "string" ? rpc : rpc.url;
+  const canBatch = typeof rpc === "string" || rpc.batch !== false;
+  const got = new Map(); let lastErr = null;
+  const q = (a, i) => ({jsonrpc:"2.0", id:i+1, method:"eth_call", params:[{to: weth, data: "0x70a08231" + pad32(a)}, "latest"]});
+  const take = (a, r) => { if (r && typeof r.result === "string" && /^0x[0-9a-fA-F]{64}$/.test(r.result)) got.set(a.toLowerCase(), BigInt(r.result)); else if (r) lastErr = (r.error && r.error.message) || "unexpected response"; };
+  if (canBatch && addrs.length > 1) {
+    try { const res = await postJSON(url, addrs.map(q));
+      if (Array.isArray(res)) for (const r of res) { const a = addrs[(r && r.id) - 1]; if (a) take(a, r); } else lastErr = (res && res.error && res.error.message) || "batch not supported";
+    } catch(e){ lastErr = e.message; }
+  }
+  if (got.size === 0) for (const a of addrs) { try { take(a, await postJSON(url, q(a, 0))); } catch(e){ lastErr = e.message; } }
+  return {got, err: got.size === addrs.length ? null : lastErr};
+}
 const pad32 = h => h.replace(/^0x/, "").toLowerCase().padStart(64, "0");
 // ABI-encode aggregate3((address target,bool allowFailure,bytes callData)[]) of getEthBalance(addr) calls
-function encodeAggregate3(mc, addrs){
-  const elems = addrs.map(a => pad32(mc) + pad32("1") + pad32("60") + pad32("24") + "4d2301cc" + pad32(a) + "0".repeat(56));
-  let off = addrs.length * 32; const heads = [];
+// calls: [[target, selector(8 hex), addr]] -> each callData is selector + address (36 bytes)
+function encodeAggregate3(calls){
+  const elems = calls.map(([t, sel, a]) => pad32(t) + pad32("1") + pad32("60") + pad32("24") + sel + pad32(a) + "0".repeat(56));
+  let off = calls.length * 32; const heads = [];
   for (const e of elems) { heads.push(pad32(off.toString(16))); off += e.length / 2; }
-  return "0x82ad56cb" + pad32("20") + pad32(addrs.length.toString(16)) + heads.join("") + elems.join("");
+  return "0x82ad56cb" + pad32("20") + pad32(calls.length.toString(16)) + heads.join("") + elems.join("");
 }
 // Decode (bool success, bytes returnData)[]; returns BigInt or null per entry
 function decodeAggregate3(hex, n){
@@ -497,13 +538,15 @@ function decodeAggregate3(hex, n){
 async function fetchMulticall(rpc, chain, addrs){
   const url = typeof rpc === "string" ? rpc : rpc.url;
   const mc = chain.mc || MULTICALL3;
-  const got = new Map();
+  const got = new Map(), wgot = new Map();
+  // native balance via getEthBalance, plus (ETH chains) WETH.balanceOf in the same eth_call
+  const calls = addrs.map(a => [mc, "4d2301cc", a]); if (chain.weth) for (const a of addrs) calls.push([chain.weth, "70a08231", a]);
   try {
-    const r = await postJSON(url, {jsonrpc:"2.0", id:1, method:"eth_call", params:[{to: mc, data: encodeAggregate3(mc, addrs)}, "latest"]});
-    if (!r || typeof r.result !== "string") return {got, err: (r && r.error && r.error.message) || "unexpected response"};
-    decodeAggregate3(r.result, addrs.length).forEach((v, i) => { if (v !== null) got.set(addrs[i].toLowerCase(), v); });
-    return {got, err: got.size === addrs.length ? null : "some entries failed"};
-  } catch(e){ return {got, err: e.message}; }
+    const r = await postJSON(url, {jsonrpc:"2.0", id:1, method:"eth_call", params:[{to: mc, data: encodeAggregate3(calls)}, "latest"]});
+    if (!r || typeof r.result !== "string") return {got, wgot, err: (r && r.error && r.error.message) || "unexpected response"};
+    decodeAggregate3(r.result, calls.length).forEach((v, i) => { if (v === null) return; if (i < addrs.length) got.set(addrs[i].toLowerCase(), v); else wgot.set(addrs[i - addrs.length].toLowerCase(), v); });
+    return {got, wgot, err: got.size === addrs.length ? null : "some entries failed"};
+  } catch(e){ return {got, wgot, err: e.message}; }
 }
 async function loadChain(chain, addrs, myRun){
   let pending = addrs.slice(); const errs = [];
@@ -515,7 +558,8 @@ async function loadChain(chain, addrs, myRun){
       const outs = await Promise.all(chunks.map(c => fetchMulticall(url, chain, c)));
       if (myRun !== runId) return;
       const host = new URL(typeof url === "string" ? url : url.url).host;
-      for (const o of outs) { for (const [k,v] of o.got) results[chain.id][k] = {state:"ok", wei:v, via:host + ", multicall"}; if (o.err) errs.push(host + " (multicall): " + o.err); }
+      for (const o of outs) { for (const [k,v] of o.got) results[chain.id][k] = {state:"ok", wei:v, via:host + ", multicall"}; if (o.err) errs.push(host + " (multicall): " + o.err);
+        if (chain.weth) for (const [k,v] of o.wgot) if (wres[chain.id][k].state !== "ok") wres[chain.id][k] = {state:"ok", wei:v, via:host + ", multicall"}; }
       pending = pending.filter(a => results[chain.id][a.toLowerCase()].state !== "ok");
       renderBody();
     }
@@ -535,6 +579,23 @@ async function loadChain(chain, addrs, myRun){
   }
   }
   for (const a of pending) results[chain.id][a.toLowerCase()] = {state:"err", msg: errs.join("\n") || "all RPCs failed"};
+  // 3) WETH not returned by multicall: batched eth_call balanceOf
+  if (chain.weth) {
+    let wp = addrs.filter(a => wres[chain.id][a.toLowerCase()].state !== "ok"); const werrs = [];
+    for (let attempt = 0; attempt < 2 && wp.length; attempt++) {
+      if (attempt) { await new Promise(r => setTimeout(r, 1200 + Math.random()*800)); if (myRun !== runId) return; }
+      for (const url of chain.rpcs) {
+        if (!wp.length) break;
+        const chunks = []; for (let i=0;i<wp.length;i+=BATCH) chunks.push(wp.slice(i,i+BATCH));
+        const outs = await Promise.all(chunks.map(c => fetchWethBatch(url, chain.weth, c)));
+        if (myRun !== runId) return;
+        const host = new URL(typeof url === "string" ? url : url.url).host;
+        for (const o of outs) { for (const [k,v] of o.got) wres[chain.id][k] = {state:"ok", wei:v, via:host}; if (o.err) werrs.push(host + ": " + o.err); }
+        wp = wp.filter(a => wres[chain.id][a.toLowerCase()].state !== "ok");
+      }
+    }
+    for (const a of wp) wres[chain.id][a.toLowerCase()] = {state:"err", msg: werrs.join("\n") || "all RPCs failed"};
+  }
   renderBody();
 }
 let lastRefreshAt = 0, refreshTimer = null, loading = false;
@@ -556,8 +617,9 @@ async function refresh(){
   lastRefreshAt = Date.now(); loading = true; updateRefreshBtn();
   const addrs = wallets.map(w => w.address);
   const active = CHAINS.filter(c => enabled[c.id]);
-  results = {};
-  for (const c of CHAINS) { results[c.id] = {}; for (const a of addrs) results[c.id][a.toLowerCase()] = {state: enabled[c.id] ? "loading" : "idle"}; }
+  results = {}; wres = {};
+  for (const c of CHAINS) { results[c.id] = {}; for (const a of addrs) results[c.id][a.toLowerCase()] = {state: enabled[c.id] ? "loading" : "idle"};
+    if (c.weth) { wres[c.id] = {}; for (const a of addrs) wres[c.id][a.toLowerCase()] = {state: enabled[c.id] ? "loading" : "idle"}; } }
   $("#updated").className = "pill"; $("#updated").textContent = "Loading…";
   renderBody();
   renderPrices();
@@ -574,12 +636,22 @@ async function refresh(){
 }
 
 // ---- Rendering ----
+// res(c, k): the value used for a cell, totals, heat and sorting. With "Show WETH" on, ETH chains add the WETH balance.
+const wethOn = c => !!(opts.showWeth && c.weth);
+function res(c, k){
+  const r = results[c.id] && results[c.id][k];
+  if (!r || r.state !== "ok" || !wethOn(c)) return r;
+  const w = wres[c.id] && wres[c.id][k];
+  if (!w || w.state === "loading" || w.state === "idle") return {state:"loading"};
+  const wok = w.state === "ok";
+  return {state:"ok", wei: r.wei + (wok ? w.wei : 0n), native: r.wei, weth: wok ? w.wei : 0n, wethErr: wok ? null : w.msg, via: r.via, wvia: wok ? w.via : null};
+}
 // Chain order: manual (drag / arrows, persisted) or, with "Sort chains by value", by total USD high→low.
 function manualChains(){ return order.map(id => CHAINS.find(c => c.id === id)).filter(Boolean); }
 function chainUsdTotal(c){
   let sum = 0, any = false;
   for (const w of wallets) {
-    const r = results[c.id] && results[c.id][w.address.toLowerCase()];
+    const r = res(c, w.address.toLowerCase());
     if (!r || r.state !== "ok") continue;
     if (r.wei === 0n) { any = true; continue; }
     const u = weiUsd(r.wei, c.sym); if (u === null) continue;
@@ -600,7 +672,7 @@ function orderedChains(){
 }
 function visibleChains(){
   let cs = orderedChains().filter(c => enabled[c.id]);
-  if (opts.hideZero && wallets.length) cs = cs.filter(c => { const rs = Object.values(results[c.id]||{}); return !rs.length || rs.some(r => r.state !== "ok" || r.wei > 0n); });
+  if (opts.hideZero && wallets.length) cs = cs.filter(c => { const rs = Object.values(results[c.id]||{}); return !rs.length || wallets.some(w => { const r = res(c, w.address.toLowerCase()); return !r || r.state !== "ok" || r.wei > 0n; }); });
   return cs;
 }
 const colorVars = c => `--cl:${c.color[0]};--cd:${c.color[1]}`;
@@ -611,7 +683,7 @@ function renderChips(){
       <label><input type="checkbox" data-chain="${c.id}" ${enabled[c.id]?"checked":""}><span class="dot"></span>${esc(c.name)} <span class="note">${c.sym}</span></label>
       <button class="mv" data-move="${c.id}" data-dir="-1" title="Move left" ${i===0?"disabled":""} aria-label="Move ${esc(c.name)} left">‹</button><button class="mv" data-move="${c.id}" data-dir="1" title="Move right" ${i===arr.length-1?"disabled":""} aria-label="Move ${esc(c.name)} right">›</button>
     </div>`).join("");
-  $("#totalsToggle").checked = !!opts.totals; $("#hideZero").checked = !!opts.hideZero; $("#byValue").checked = byVal;
+  $("#totalsToggle").checked = !!opts.totals; $("#hideZero").checked = !!opts.hideZero; $("#showWeth").checked = !!opts.showWeth; $("#byValue").checked = byVal;
   $("#chainChips").classList.toggle("byvalue", byVal);
   $("#orderNote").textContent = byVal ? "Columns are arranged by total value (high → low). This manual order is used when that is off." : "Drag chips or column headers (or use ‹ ›) to reorder columns.";
   $("#origOrder").classList.toggle("active", opts.sortCol === "orig");
@@ -621,13 +693,20 @@ function cell(r, c, heat, addr){
   if (!r || r.state === "idle") return `<td><span class="zero">·</span></td>`;
   if (r.state === "loading") return `<td><span class="spin" aria-label="loading"></span></td>`;
   if (r.state === "err") return `<td><span class="err" title="${esc(r.msg)}">⚠ error</span>${ex}</td>`;
-  if (r.wei === 0n) return `<td class="z"><span class="zero" title="0 (via ${esc(r.via)})">—</span>${ex}</td>`;
-  const s = fmtWei(r.wei);
+  const nat = r.native !== undefined ? r.native : r.wei;
+  const wErr = r.wethErr ? `<span class="wline werr" title="${esc("WETH balance error (not included):\n" + r.wethErr)}">WETH ⚠</span>` : "";
+  if (r.wei === 0n) return `<td class="z"><span class="zero" title="0 (via ${esc(r.via)})">—</span>${ex}${wErr}</td>`;
+  const s = fmtWei(nat);
   const usd = weiUsd(r.wei, sym);
-  const usdHtml = usd !== null ? `<span class="usd">${fmtUsd(usd)}</span>`
+  const usdHtml = usd !== null ? `<span class="usd"${r.weth ? ` title="${esc("ETH + WETH")}"` : ""}>${fmtUsd(usd)}</span>`
     : (priceState === "done" ? `<span class="usd na" title="Price unavailable">${naTxt()}</span>` : `<span class="usd">…</span>`);
   const h = heat(usd);
-  return `<td class="cc nz" style="${st}${h ? `;--h:${h}%` : ""}"><span class="amt" title="${fullWei(r.wei)} ${sym} (via ${esc(r.via)})">${s === "0" ? "&lt;0.000001" : s}</span>${ex}${usdHtml}</td>`;
+  const amt = nat === 0n ? `<span class="zero" title="0 ${sym} (via ${esc(r.via)})">—</span>` : `<span class="amt" title="${fullWei(nat)} ${sym} (via ${esc(r.via)})">${s === "0" ? "&lt;0.000001" : s}</span>`;
+  return `<td class="cc nz" style="${st}${h ? `;--h:${h}%` : ""}">${amt}${ex}${r.weth ? wethLine(r.weth, c, addr, r.wvia) : wErr}${usdHtml}</td>`;
+}
+function wethLine(wei, c, addr, via){
+  const s = fmtWei(wei), u = weiUsd(wei, "ETH");
+  return `<span class="wline" title="${fullWei(wei)} WETH${via ? ` (via ${esc(via)})` : ""}, priced at the ETH price"><span class="wamt">${s === "0" ? "&lt;0.000001" : s}</span> WETH${u !== null ? ` · ${fmtUsd(u)}` : ""}${addr ? wethLink(c, addr) : ""}</span>`;
 }
 const sortArrow = col => opts.sortCol === col ? `<span class="arrow">${opts.sortDir === "asc" ? "▲" : "▼"}</span>` : `<span class="arrow off">▼</span>`;
 function renderHead(cs){
@@ -636,7 +715,7 @@ function renderHead(cs){
   $("#tbl thead").innerHTML = `<tr><th data-sort="orig" class="sortable" title="Click for original order">Wallet (${wallets.length})${opts.sortCol === "orig" ? ' <span class="arrow">≡</span>' : ""}</th>`
     + `<th class="usdcol sortable" data-sort="usd" title="Sorted ${dirWord("usd")}">Total ${cur()} ${sortArrow("usd")}<span class="sym">all shown chains</span></th>`
     + cs.map(c => `<th class="cc chainth sortable" data-sort="${c.id}" data-drag="${c.id}" data-group="th" style="${colorVars(c)}" title="${esc(c.name)}: sorted ${dirWord(c.id)}. Drag to move column.">`
-      + `<span class="thname"><span class="grip" aria-hidden="true">⠿</span><span class="dot"></span>${esc(c.name)} ${sortArrow(c.id)}</span><span class="sym">${c.sym}</span>${ph(c)}</th>`).join("") + `</tr>`;
+      + `<span class="thname"><span class="grip" aria-hidden="true">⠿</span><span class="dot"></span>${esc(c.name)} ${sortArrow(c.id)}</span><span class="sym">${c.sym}${wethOn(c) ? " + WETH" : ""}</span>${ph(c)}</th>`).join("") + `</tr>`;
 }
 // Sum USD across shown chains for a list of results; returns html
 function usdSumVal(pairs){
@@ -644,6 +723,7 @@ function usdSumVal(pairs){
   for (const [c, r] of pairs) {
     if (!r || r.state === "loading" || r.state === "idle") { loadingAny = true; continue; }
     if (r.state === "err") { missing.push(c.name + " (balance error)"); continue; }
+    if (r.wethErr) missing.push(c.name + " (WETH error)");
     if (r.wei === 0n) { priced++; continue; }
     const u = weiUsd(r.wei, c.sym);
     if (u === null) { if (priceState !== "done") loadingAny = true; else missing.push(c.name + " (" + c.sym + " price n/a)"); continue; }
@@ -663,10 +743,10 @@ let rowOrderCache = null;
 function sortKey(w, cs){
   const k = w.address.toLowerCase();
   if (opts.sortCol === "usd") {
-    const v = usdSumVal(cs.map(c => [c, results[c.id] && results[c.id][k]]));
+    const v = usdSumVal(cs.map(c => [c, res(c, k)]));
     return (v.loading || (!v.priced && v.missing.length)) ? null : v.sum;
   }
-  const r = results[opts.sortCol] && results[opts.sortCol][k];
+  const sc = CHAINS.find(c => c.id === opts.sortCol); const r = sc && res(sc, k);
   return r && r.state === "ok" ? Number(r.wei) / 1e18 : null;   // same coin in a column, so amount order = USD order
 }
 function rowOrder(cs){
@@ -689,7 +769,7 @@ function renderBody(){
   // heat shading: log scale of each cell's USD vs the largest single cell / wallet total
   let maxCell = 0, maxWallet = 0;
   const wTotals = wallets.map(w => { const k = w.address.toLowerCase(); let s = 0;
-    for (const c of cs) { const r = results[c.id] && results[c.id][k]; if (r && r.state === "ok" && r.wei > 0n) { const u = weiUsd(r.wei, c.sym); if (u !== null) { s += u; if (u > maxCell) maxCell = u; } } }
+    for (const c of cs) { const r = res(c, k); if (r && r.state === "ok" && r.wei > 0n) { const u = weiUsd(r.wei, c.sym); if (u !== null) { s += u; if (u > maxCell) maxCell = u; } } }
     if (s > maxWallet) maxWallet = s; return s; });
   const tint = (u, max) => (u === null || !(u > 0) || !(max > 0)) ? 0 : Math.round(4 + 22 * Math.log10(1 + u) / Math.log10(1 + max));
   const heat = u => tint(u, maxCell);
@@ -701,20 +781,22 @@ function renderBody(){
       <span class="addr" title="${w.address}">${short(w.address)}
         <button class="btn ghost small" data-copy="${i}" title="Copy address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn ghost small" data-explore="${i}" title="Open in a block explorer" aria-haspopup="menu">${EX_ICON}</button></span></div>
       <button class="btn ghost small" data-del="${i}" title="Remove wallet">✕</button></div></td>
-      <td class="usdcol"${p ? ` style="--h:${p}%"` : ""}>${usdSum(cs.map(c => [c, results[c.id] && results[c.id][k]]))}</td>
-      ${cs.map(c => cell(results[c.id] && results[c.id][k], c, heat, w.address)).join("")}</tr>`;
+      <td class="usdcol"${p ? ` style="--h:${p}%"` : ""}>${usdSum(cs.map(c => [c, res(c, k)]))}</td>
+      ${cs.map(c => cell(res(c, k), c, heat, w.address)).join("")}</tr>`;
   }).join("");
   if (opts.totals && wallets.length > 1) {
-    const all = []; for (const c of cs) for (const w of wallets) all.push([c, results[c.id] && results[c.id][w.address.toLowerCase()]]);
+    const all = []; for (const c of cs) for (const w of wallets) all.push([c, res(c, w.address.toLowerCase())]);
     tf.innerHTML = `<tr><td>Total</td><td class="usdcol">${usdSum(all)}</td>${cs.map(c => {
-      const rs = wallets.map(w => results[c.id] && results[c.id][w.address.toLowerCase()]);
+      const rs = wallets.map(w => res(c, w.address.toLowerCase()));
       if (rs.some(r => !r || r.state === "loading")) return `<td><span class="spin"></span></td>`;
       const ok = rs.filter(r => r.state === "ok"); const bad = rs.length - ok.length;
       if (!ok.length) return `<td><span class="err" title="No balances loaded">⚠ error</span></td>`;
       const sum = ok.reduce((s,r)=>s+r.wei,0n);
+      const nsum = ok.reduce((s,r)=>s+(r.native !== undefined ? r.native : r.wei),0n), wsum = sum - nsum;
+      const wbad = ok.filter(r => r.wethErr).length;
       const u = sum === 0n ? null : weiUsd(sum, c.sym);
       const uh = sum === 0n ? "" : (u !== null ? `<span class="usd">${fmtUsd(u)}</span>` : (priceState === "done" ? `<span class="usd na">${naTxt()}</span>` : ""));
-      return `<td class="cc ${sum===0n?"z":"nz"}" style="${colorVars(c)}" title="${fullWei(sum)} ${c.sym}${bad?` (excludes ${bad} failed)`:""}">${sum===0n?'<span class="zero">—</span>':`<span class="amt">${fmtWei(sum)}</span>`}${bad?' <span class="err" title="Partial: some wallets failed">*</span>':""}${uh}</td>`;
+      return `<td class="cc ${sum===0n?"z":"nz"}" style="${colorVars(c)}" title="${fullWei(nsum)} ${c.sym}${wsum ? ` + ${fullWei(wsum)} WETH` : ""}${bad?` (excludes ${bad} failed)`:""}${wbad?` (WETH excludes ${wbad} failed)`:""}">${sum===0n?'<span class="zero">—</span>':(nsum===0n?'<span class="zero">—</span>':`<span class="amt">${fmtWei(nsum)}</span>`)}${bad||wbad?' <span class="err" title="Partial: some wallets failed">*</span>':""}${wsum ? wethLine(wsum, c, null, null) : ""}${uh}</td>`;
     }).join("")}</tr>`;
   } else tf.innerHTML = "";
 }
@@ -819,6 +901,7 @@ $("#byValue").onchange = e => { opts.chainsByValue = e.target.checked; valueOrde
 $("#resetOrder").onclick = () => { order = CHAINS.map(c => c.id); saveOrder(); render(); toast("Chain order reset"); };
 $("#origOrder").onclick = () => { opts.sortCol = opts.sortCol === "orig" ? "usd" : "orig"; opts.sortDir = "desc"; rowOrderCache = null; save(); render(); };
 $("#totalsToggle").onchange = e => { opts.totals = e.target.checked; save(); renderBody(); };
+$("#showWeth").onchange = e => { opts.showWeth = e.target.checked; valueOrderCache = null; rowOrderCache = null; save(); renderBody(); };
 $("#hideZero").onchange = e => { opts.hideZero = e.target.checked; save(); renderBody(); };
 $("#addBtn").onclick = () => {
   const a = $("#addAddr").value.trim(), l = $("#addLabel").value.trim();

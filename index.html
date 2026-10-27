@@ -74,6 +74,40 @@ th .sym.na{font-weight:500}
 .pill{font-size:12px;border:1px solid var(--border);border-radius:999px;padding:2px 8px;color:var(--muted)}
 .pill.bad{color:var(--err);border-color:var(--err)}
 .pill.good{color:var(--ok);border-color:var(--ok)}
+/* chain colours: --c is the brand shade that reads well on the current background */
+.cc{--c:var(--cl)}
+@media (prefers-color-scheme: dark){.cc{--c:var(--cd)}}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:5px;flex:none}
+.chip.cc{padding:3px 4px 3px 6px;gap:4px;border-left:3px solid var(--c)}
+.chip.cc label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.chip.cc.on{background:color-mix(in srgb, var(--c) 10%, var(--card));border-color:color-mix(in srgb, var(--c) 45%, var(--border));border-left-color:var(--c)}
+.chips.byvalue .chip.cc{border-style:dashed;border-left-style:solid}
+.chip.opt{cursor:pointer}
+.grip{cursor:grab;color:var(--muted);font-size:13px;line-height:1;padding:2px 3px;touch-action:none;user-select:none;opacity:.7}
+.grip:hover{opacity:1}
+.mv{appearance:none;border:0;background:transparent;color:var(--muted);font:inherit;font-size:15px;line-height:1;padding:0 4px;cursor:pointer;border-radius:4px}
+.mv:hover:not(:disabled){color:var(--text);background:var(--border)}
+.mv:disabled{opacity:.25;cursor:default}
+.btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-2)}
+th.chainth{border-top:3px solid var(--c);user-select:none}
+th.chainth .thname{display:inline-flex;align-items:center;gap:2px;color:var(--text)}
+th.chainth .grip{font-size:11px;padding:0 2px 0 0}
+th.sortable{cursor:pointer}
+th.sortable:hover{color:var(--text)}
+.arrow{font-size:9px;margin-left:3px;color:var(--accent)}
+.arrow.off{opacity:0}
+th.sortable:hover .arrow.off{opacity:.35}
+td.nz{background-image:linear-gradient(color-mix(in srgb, var(--c) var(--h,0%), transparent),color-mix(in srgb, var(--c) var(--h,0%), transparent))}
+td.nz .amt{font-weight:650;color:var(--text)}
+td.nz .usd{color:color-mix(in srgb, var(--c) 55%, var(--muted))}
+td.usdcol{color:var(--accent);background-image:linear-gradient(color-mix(in srgb, var(--accent) calc(var(--h,0%) * .8 + 3%), transparent),color-mix(in srgb, var(--accent) calc(var(--h,0%) * .8 + 3%), transparent))}
+th.usdcol{color:var(--accent);border-top:3px solid var(--accent)}
+tfoot td.usdcol{font-size:15px}
+.dragging{opacity:.4}
+.drop-before{box-shadow:inset 3px 0 0 var(--accent)}
+.drop-after{box-shadow:inset -3px 0 0 var(--accent)}
+.dragghost{position:fixed;z-index:20;pointer-events:none;background:var(--card);color:var(--text);border:1px solid var(--c);border-left:4px solid var(--c);border-radius:8px;padding:4px 10px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)}
+body.is-dragging{cursor:grabbing;user-select:none}
 @media (max-width:640px){h1{font-size:18px}th:first-child,td:first-child{min-width:160px}}
 </style>
 </head>
@@ -123,15 +157,19 @@ Main,0xYourWalletAddress
     <div class="row" style="justify-content:space-between;margin-bottom:8px">
       <b>Chains</b>
       <div class="row">
-        <label class="chip" style="cursor:pointer"><input type="checkbox" id="totalsToggle"> Show totals row</label>
-        <label class="chip" style="cursor:pointer"><input type="checkbox" id="hideZero"> Hide all-zero chains</label>
+        <label class="chip opt"><input type="checkbox" id="byValue"> Sort chains by value</label>
+        <label class="chip opt"><input type="checkbox" id="totalsToggle"> Show totals row</label>
+        <label class="chip opt"><input type="checkbox" id="hideZero"> Hide all-zero chains</label>
+        <button class="btn small" id="origOrder" title="Show wallets in the order you added them">Original row order</button>
+        <button class="btn small" id="resetOrder" title="Restore the default chain order">Reset order</button>
       </div>
     </div>
     <div class="chips" id="chainChips"></div>
+    <div class="note" id="orderNote" style="margin-top:8px"></div>
   </div>
 
   <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
-  <p class="note">Click a label to rename it. Amounts show up to 6 decimals (hover for the full value); the grey line under each is its USD value at the live price. "⚠ error" means every RPC for that chain failed; "price n/a" means no price source answered, so USD is left out (marked *). Nothing is guessed; press Refresh to retry.</p>
+  <p class="note">Click a column header to sort wallets (high → low, click again for low → high; errors and missing prices go to the bottom). Click a label to rename it. Amounts show up to 6 decimals (hover for the full value); the grey line under each is its USD value at the live price. "⚠ error" means every RPC for that chain failed; "price n/a" means no price source answered, so USD is left out (marked *). Nothing is guessed; press Refresh to retry.</p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -154,7 +192,17 @@ const CHAINS = [
   {id:"abstract",  name:"Abstract",  sym:"ETH",  mc:"0xF9cda624FBC7e059355ce98a31693d299FACd963", rpcs:["https://api.mainnet.abs.xyz","https://abstract.drpc.org",{url:"https://abstract-mainnet.gateway.tatum.io",batch:false}]},
   {id:"plasma",    name:"Plasma",    sym:"XPL",  rpcs:["https://rpc.plasma.to",{url:"https://plasma-mainnet.gateway.tatum.io",batch:false},{url:"https://plasma.api.onfinality.io/public",batch:false}]},
   {id:"robinhood", name:"Robinhood Chain", sym:"ETH", rpcs:["https://rpc.mainnet.chain.robinhood.com","https://robinhood-rpc.publicnode.com","https://robinhood.drpc.org"]},
+  {id:"hyperevm",  name:"HyperEVM",  sym:"HYPE", rpcs:["https://rpc.hyperliquid.xyz/evm","https://rpc.hypurrscan.io","https://hyperliquid-rpc.publicnode.com"]},
+  {id:"monad",     name:"Monad",     sym:"MON",  rpcs:["https://rpc.monad.xyz","https://rpc3.monad.xyz","https://143.rpc.thirdweb.com"]},
+  {id:"xlayer",    name:"X Layer",   sym:"OKB",  rpcs:["https://rpc.xlayer.tech","https://xlayerrpc.okx.com","https://196.rpc.thirdweb.com"]},
 ];
+// Brand accents: [light-mode shade with readable contrast on white, dark-mode shade]
+const COLORS = {eth:["#5A73DB","#8A9EF0"], bsc:["#B88A00","#F0B90B"], base:["#0052FF","#5C8DFF"], arb:["#1B86D1","#28A0F0"],
+  op:["#E0041C","#FF5262"], pol:["#8247E5","#A880F0"], avax:["#D73A3B","#F06A6B"], scroll:["#C2702A","#FFC58A"],
+  zksync:["#5F60D8","#8C8DFC"], linea:["#0A8FB0","#61DFFF"], gnosis:["#04795B","#3CC59A"], abstract:["#00A35C","#00FF94"],
+  plasma:["#295B4F","#569F8C"], robinhood:["#6B8500","#CCFF00"],
+  hyperevm:["#0F8A73","#97FCE4"], monad:["#6E54F5","#9C8BFB"], xlayer:["#1F2328","#E6E8EB"]};
+for (const c of CHAINS) c.color = COLORS[c.id] || ["#6b7280","#9aa3b2"];
 // ---- USD prices: CoinGecko first, then Coinbase, then Binance (USDT pairs). All free, no key, CORS "*". ----
 const COINS = {
   ETH:  {cg:"ethereum",                cb:"ETH",  bn:"ETHUSDT"},
@@ -163,6 +211,9 @@ const COINS = {
   AVAX: {cg:"avalanche-2",             cb:"AVAX", bn:"AVAXUSDT"},
   xDAI: {cg:"xdai",                    cb:null,   bn:null},
   XPL:  {cg:"plasma",                  cb:"XPL",  bn:"XPLUSDT"},
+  HYPE: {cg:"hyperliquid",             cb:"HYPE", bn:"HYPEUSDT"},
+  MON:  {cg:"monad",                   cb:"MON",  bn:null},     // not listed on Binance spot data API (an invalid symbol fails the whole request)
+  OKB:  {cg:"okb",                     cb:null,   bn:null},     // not on Coinbase or Binance; CoinGecko only
 };
 let prices = {};          // sym -> {usd:Number, src:String}
 let priceState = "idle";  // idle | loading | done
@@ -211,11 +262,10 @@ function renderPrices(){
     + `<span class="note">${srcs.length ? "via " + esc(srcs.join(", ")) : ""}${priceTime ? " · " + priceTime.toLocaleTimeString() : ""}</span>`;
 }
 
-
 const LS = {wallets:"nbt.wallets.v1", chains:"nbt.chains.v1", opts:"nbt.opts.v1", seeded:"nbt.seeded.v1"};
 const BATCH = 10, TIMEOUT_MS = 12000, DP = 6;
 // Multicall3: one eth_call returns every wallet's native balance on a chain.
-// Verified (eth_getCode + values equal to eth_getBalance) on all 14 chains. zkSync Era and Abstract use the
+// Verified (eth_getCode + values equal to eth_getBalance) on all 17 chains. zkSync Era and Abstract use the
 // native zkSync deployment (chain.mc); every other chain uses the canonical address below.
 const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const MC_CHUNK = 250;          // addresses per eth_call (300 tested OK on every endpoint)
@@ -225,12 +275,20 @@ const STAGGER_MS = 60;         // small gap between chains starting their reques
 // ---- State ----
 let wallets = load(LS.wallets, null);
 if (!Array.isArray(wallets)) wallets = [];
-
 localStorage.setItem(LS.seeded, "1");
 let enabled = load(LS.chains, null);
 if (!enabled || typeof enabled !== "object") enabled = Object.fromEntries(CHAINS.map(c => [c.id, true]));
 for (const c of CHAINS) if (!(c.id in enabled)) enabled[c.id] = true;
-let opts = Object.assign({totals:true, hideZero:false}, load(LS.opts, {}));
+let opts = Object.assign({totals:true, hideZero:false, sortCol:"usd", sortDir:"desc", chainsByValue:false}, load(LS.opts, {}));
+if (opts.sortCol !== "usd" && opts.sortCol !== "orig" && !CHAINS.some(c => c.id === opts.sortCol)) opts.sortCol = "usd";
+// Manual column order (persisted). Unknown ids dropped; chains added later append at the end.
+const LS_ORDER = "nbt.order.v1";
+let order = load(LS_ORDER, null);
+if (!Array.isArray(order)) order = [];
+order = order.filter(id => CHAINS.some(c => c.id === id)).filter((id, i, a) => a.indexOf(id) === i);
+for (const c of CHAINS) if (!order.includes(c.id)) order.push(c.id);
+function saveOrder(){ localStorage.setItem(LS_ORDER, JSON.stringify(order)); }
+saveOrder();
 // results[chainId][addrLower] = {state:'loading'|'ok'|'err', wei:BigInt, msg}
 let results = {};
 let runId = 0;
@@ -430,64 +488,135 @@ async function refresh(){
 }
 
 // ---- Rendering ----
+// Chain order: manual (drag / arrows, persisted) or, with "Sort chains by value", by total USD high→low.
+function manualChains(){ return order.map(id => CHAINS.find(c => c.id === id)).filter(Boolean); }
+function chainUsdTotal(c){
+  let sum = 0, any = false;
+  for (const w of wallets) {
+    const r = results[c.id] && results[c.id][w.address.toLowerCase()];
+    if (!r || r.state !== "ok") continue;
+    if (r.wei === 0n) { any = true; continue; }
+    const u = weiUsd(r.wei, c.sym); if (u === null) continue;
+    sum += u; any = true;
+  }
+  return any ? sum : null;
+}
+let valueOrderCache = null;
+function orderedChains(){
+  const man = manualChains();
+  if (!opts.chainsByValue) return man;
+  if (loading && valueOrderCache) return valueOrderCache.map(id => CHAINS.find(c => c.id === id)).filter(Boolean);
+  const keyed = man.map((c, i) => ({c, i, v: chainUsdTotal(c)}));
+  keyed.sort((a, b) => (a.v === null) - (b.v === null) || (b.v ?? 0) - (a.v ?? 0) || a.i - b.i);
+  const out = keyed.map(k => k.c);
+  if (!loading) valueOrderCache = out.map(c => c.id);
+  return out;
+}
 function visibleChains(){
-  let cs = CHAINS.filter(c => enabled[c.id]);
+  let cs = orderedChains().filter(c => enabled[c.id]);
   if (opts.hideZero && wallets.length) cs = cs.filter(c => { const rs = Object.values(results[c.id]||{}); return !rs.length || rs.some(r => r.state !== "ok" || r.wei > 0n); });
   return cs;
 }
+const colorVars = c => `--cl:${c.color[0]};--cd:${c.color[1]}`;
 function renderChips(){
-  $("#chainChips").innerHTML = CHAINS.map(c => `<label class="chip ${enabled[c.id]?"on":""}"><input type="checkbox" data-chain="${c.id}" ${enabled[c.id]?"checked":""}>${esc(c.name)} <span class="note">${c.sym}</span></label>`).join("");
-  $("#totalsToggle").checked = !!opts.totals; $("#hideZero").checked = !!opts.hideZero;
+  const byVal = !!opts.chainsByValue;
+  $("#chainChips").innerHTML = manualChains().map((c, i, arr) => `<div class="chip cc ${enabled[c.id]?"on":""}" data-drag="${c.id}" data-group="chip" style="${colorVars(c)}">
+      <span class="grip" title="Drag to reorder" aria-hidden="true">⠿</span>
+      <label><input type="checkbox" data-chain="${c.id}" ${enabled[c.id]?"checked":""}><span class="dot"></span>${esc(c.name)} <span class="note">${c.sym}</span></label>
+      <button class="mv" data-move="${c.id}" data-dir="-1" title="Move left" ${i===0?"disabled":""} aria-label="Move ${esc(c.name)} left">‹</button><button class="mv" data-move="${c.id}" data-dir="1" title="Move right" ${i===arr.length-1?"disabled":""} aria-label="Move ${esc(c.name)} right">›</button>
+    </div>`).join("");
+  $("#totalsToggle").checked = !!opts.totals; $("#hideZero").checked = !!opts.hideZero; $("#byValue").checked = byVal;
+  $("#chainChips").classList.toggle("byvalue", byVal);
+  $("#orderNote").textContent = byVal ? "Columns are arranged by total USD (high → low). This manual order is used when that is off." : "Drag chips or column headers (or use ‹ ›) to reorder columns.";
+  $("#origOrder").classList.toggle("active", opts.sortCol === "orig");
 }
-function cell(r, sym){
-  if (!r || r.state === "idle") return `<span class="zero">·</span>`;
-  if (r.state === "loading") return `<span class="spin" aria-label="loading"></span>`;
-  if (r.state === "err") return `<span class="err" title="${esc(r.msg)}">⚠ error</span>`;
-  if (r.wei === 0n) return `<span class="zero" title="0 (via ${esc(r.via)})">—</span>`;
+function cell(r, c, heat){
+  const sym = c.sym, st = colorVars(c);
+  if (!r || r.state === "idle") return `<td><span class="zero">·</span></td>`;
+  if (r.state === "loading") return `<td><span class="spin" aria-label="loading"></span></td>`;
+  if (r.state === "err") return `<td><span class="err" title="${esc(r.msg)}">⚠ error</span></td>`;
+  if (r.wei === 0n) return `<td class="z"><span class="zero" title="0 (via ${esc(r.via)})">—</span></td>`;
   const s = fmtWei(r.wei);
   const usd = weiUsd(r.wei, sym);
   const usdHtml = usd !== null ? `<span class="usd">${fmtUsd(usd)}</span>`
     : (priceState === "done" ? `<span class="usd na" title="Price unavailable">$ n/a</span>` : `<span class="usd">…</span>`);
-  return `<span title="${fullWei(r.wei)} ${sym} (via ${esc(r.via)})">${s === "0" ? "&lt;0.000001" : s}</span>${usdHtml}`;
+  const h = heat(usd);
+  return `<td class="cc nz" style="${st}${h ? `;--h:${h}%` : ""}"><span class="amt" title="${fullWei(r.wei)} ${sym} (via ${esc(r.via)})">${s === "0" ? "&lt;0.000001" : s}</span>${usdHtml}</td>`;
 }
-function renderHead(){
-  const cs = visibleChains();
+const sortArrow = col => opts.sortCol === col ? `<span class="arrow">${opts.sortDir === "asc" ? "▲" : "▼"}</span>` : `<span class="arrow off">▼</span>`;
+function renderHead(cs){
   const ph = c => prices[c.sym] ? `<span class="sym" title="${esc(prices[c.sym].src)}">${fmtPrice(prices[c.sym].usd)}</span>` : (priceState === "done" ? `<span class="sym na">price n/a</span>` : "");
-  $("#tbl thead").innerHTML = `<tr><th>Wallet (${wallets.length})</th><th class="usdcol">Total USD<span class="sym">all shown chains</span></th>${cs.map(c=>`<th>${esc(c.name)}<span class="sym">${c.sym}</span>${ph(c)}</th>`).join("")}</tr>`;
+  const dirWord = col => opts.sortCol === col ? (opts.sortDir === "desc" ? "high → low; click for low → high" : "low → high; click for high → low") : "click to sort high → low";
+  $("#tbl thead").innerHTML = `<tr><th data-sort="orig" class="sortable" title="Click for original order">Wallet (${wallets.length})${opts.sortCol === "orig" ? ' <span class="arrow">≡</span>' : ""}</th>`
+    + `<th class="usdcol sortable" data-sort="usd" title="Sorted ${dirWord("usd")}">Total USD ${sortArrow("usd")}<span class="sym">all shown chains</span></th>`
+    + cs.map(c => `<th class="cc chainth sortable" data-sort="${c.id}" data-drag="${c.id}" data-group="th" style="${colorVars(c)}" title="${esc(c.name)}: sorted ${dirWord(c.id)}. Drag to move column.">`
+      + `<span class="thname"><span class="grip" aria-hidden="true">⠿</span><span class="dot"></span>${esc(c.name)} ${sortArrow(c.id)}</span><span class="sym">${c.sym}</span>${ph(c)}</th>`).join("") + `</tr>`;
 }
-// Sum USD across shown chains for a list of results; returns {html, title}
-function usdSum(pairs){
-  let sum = 0, loading = false, missing = [], priced = 0;
+// Sum USD across shown chains for a list of results; returns html
+function usdSumVal(pairs){
+  let sum = 0, loadingAny = false, missing = [], priced = 0;
   for (const [c, r] of pairs) {
-    if (!r || r.state === "loading" || r.state === "idle") { loading = true; continue; }
+    if (!r || r.state === "loading" || r.state === "idle") { loadingAny = true; continue; }
     if (r.state === "err") { missing.push(c.name + " (balance error)"); continue; }
-    if (r.wei === 0n) continue;
+    if (r.wei === 0n) { priced++; continue; }
     const u = weiUsd(r.wei, c.sym);
-    if (u === null) { if (priceState !== "done") loading = true; else missing.push(c.name + " (" + c.sym + " price n/a)"); continue; }
+    if (u === null) { if (priceState !== "done") loadingAny = true; else missing.push(c.name + " (" + c.sym + " price n/a)"); continue; }
     sum += u; priced++;
   }
-  if (loading) return `<span class="spin"></span>`;
+  return {sum, loading: loadingAny, missing, priced};
+}
+function usdSum(pairs){
+  const {sum, loading: l, missing, priced} = usdSumVal(pairs);
+  if (l) return `<span class="spin"></span>`;
   if (!priced && missing.length) return `<span class="na" title="${esc("No USD value available. " + missing.join(", "))}">$ n/a</span>`;
   const t = missing.length ? `Excludes: ${missing.join(", ")}` : "Sum of all shown chains";
   return `<span title="${esc(t)}">${fmtUsd(sum)}</span>${missing.length ? ` <span class="err" title="${esc(t)}">*</span>` : ""}`;
 }
+// Row order: sort key per wallet; null keys (errors, missing price, loading) always go to the bottom.
+let rowOrderCache = null;
+function sortKey(w, cs){
+  const k = w.address.toLowerCase();
+  if (opts.sortCol === "usd") {
+    const v = usdSumVal(cs.map(c => [c, results[c.id] && results[c.id][k]]));
+    return (v.loading || (!v.priced && v.missing.length)) ? null : v.sum;
+  }
+  const r = results[opts.sortCol] && results[opts.sortCol][k];
+  return r && r.state === "ok" ? Number(r.wei) / 1e18 : null;   // same coin in a column, so amount order = USD order
+}
+function rowOrder(cs){
+  const idx = wallets.map((_, i) => i);
+  if (opts.sortCol === "orig" || !opts.sortCol) return idx;
+  if (loading && rowOrderCache && rowOrderCache.length === wallets.length) return rowOrderCache;
+  const keys = wallets.map(w => sortKey(w, cs)); const dir = opts.sortDir === "asc" ? 1 : -1;
+  idx.sort((a, b) => (keys[a] === null) - (keys[b] === null) || (keys[a] ?? 0) === (keys[b] ?? 0) && a - b || dir * ((keys[a] ?? 0) - (keys[b] ?? 0)));
+  if (!loading) rowOrderCache = idx.slice();
+  return idx;
+}
 function renderBody(){
-  renderHead();
   const cs = visibleChains();
+  renderHead(cs);
   const tb = $("#tbl tbody"), tf = $("#tbl tfoot");
   if (!wallets.length) {
     tb.innerHTML = `<tr><td colspan="${cs.length+2}" class="empty" style="text-align:center">No wallets yet. Open <b>Wallets: add, import, export</b> above to add some.</td></tr>`;
     tf.innerHTML = ""; return;
   }
-  tb.innerHTML = wallets.map((w,i) => {
-    const k = w.address.toLowerCase();
+  // heat shading: log scale of each cell's USD vs the largest single cell / wallet total
+  let maxCell = 0, maxWallet = 0;
+  const wTotals = wallets.map(w => { const k = w.address.toLowerCase(); let s = 0;
+    for (const c of cs) { const r = results[c.id] && results[c.id][k]; if (r && r.state === "ok" && r.wei > 0n) { const u = weiUsd(r.wei, c.sym); if (u !== null) { s += u; if (u > maxCell) maxCell = u; } } }
+    if (s > maxWallet) maxWallet = s; return s; });
+  const tint = (u, max) => (u === null || !(u > 0) || !(max > 0)) ? 0 : Math.round(4 + 22 * Math.log10(1 + u) / Math.log10(1 + max));
+  const heat = u => tint(u, maxCell);
+  tb.innerHTML = rowOrder(cs).map(i => {
+    const w = wallets[i], k = w.address.toLowerCase();
+    const p = tint(wTotals[i], maxWallet);
     return `<tr><td><div class="walletcell"><div class="meta">
       <span class="label" data-edit="${i}" title="Click to rename">${w.label ? esc(w.label) : `<span class="zero">Wallet ${i+1}</span>`}</span>
       <span class="addr" title="${w.address}">${short(w.address)}
         <button class="btn ghost small" data-copy="${i}" title="Copy address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></span></div>
       <button class="btn ghost small" data-del="${i}" title="Remove wallet">✕</button></div></td>
-      <td class="usdcol">${usdSum(cs.map(c => [c, results[c.id] && results[c.id][k]]))}</td>
-      ${cs.map(c => `<td>${cell(results[c.id] && results[c.id][k], c.sym)}</td>`).join("")}</tr>`;
+      <td class="usdcol"${p ? ` style="--h:${p}%"` : ""}>${usdSum(cs.map(c => [c, results[c.id] && results[c.id][k]]))}</td>
+      ${cs.map(c => cell(results[c.id] && results[c.id][k], c, heat)).join("")}</tr>`;
   }).join("");
   if (opts.totals && wallets.length > 1) {
     const all = []; for (const c of cs) for (const w of wallets) all.push([c, results[c.id] && results[c.id][w.address.toLowerCase()]]);
@@ -499,11 +628,76 @@ function renderBody(){
       const sum = ok.reduce((s,r)=>s+r.wei,0n);
       const u = sum === 0n ? null : weiUsd(sum, c.sym);
       const uh = sum === 0n ? "" : (u !== null ? `<span class="usd">${fmtUsd(u)}</span>` : (priceState === "done" ? `<span class="usd na">$ n/a</span>` : ""));
-      return `<td title="${fullWei(sum)} ${c.sym}${bad?` (excludes ${bad} failed)`:""}">${sum===0n?'<span class="zero">—</span>':fmtWei(sum)}${bad?' <span class="err" title="Partial: some wallets failed">*</span>':""}${uh}</td>`;
+      return `<td class="cc ${sum===0n?"z":"nz"}" style="${colorVars(c)}" title="${fullWei(sum)} ${c.sym}${bad?` (excludes ${bad} failed)`:""}">${sum===0n?'<span class="zero">—</span>':`<span class="amt">${fmtWei(sum)}</span>`}${bad?' <span class="err" title="Partial: some wallets failed">*</span>':""}${uh}</td>`;
     }).join("")}</tr>`;
   } else tf.innerHTML = "";
 }
 function render(){ renderChips(); renderBody(); }
+
+// ---- Reordering (pointer events: mouse drags anywhere on a chip/header, touch uses the ⠿ grip) ----
+function moveChain(id, toIndex){
+  const from = order.indexOf(id); if (from < 0) return;
+  order.splice(from, 1); order.splice(Math.max(0, Math.min(order.length, toIndex)), 0, id);
+  saveOrder(); render();
+}
+let drag = null, suppressClick = false;
+document.addEventListener("pointerdown", e => {
+  const el = e.target.closest("[data-drag]"); if (!el || e.button > 0) return;
+  if (e.target.closest("button,input")) return;
+  if (e.pointerType !== "mouse" && !e.target.closest(".grip")) return;   // touch: only the grip, so scrolling still works
+  drag = {id: el.dataset.drag, group: el.dataset.group, x0: e.clientX, y0: e.clientY, el, active: false, pid: e.pointerId, target: null, after: false};
+});
+function updateDropTarget(keepLast){
+  const under = document.elementFromPoint(drag.lx, drag.ly);
+  const t = under && under.closest(`[data-drag][data-group="${drag.group}"]`);
+  if (keepLast && (!t || t.dataset.drag === drag.id)) return;   // while auto-scrolling, keep the last valid spot
+  document.querySelectorAll(".drop-before,.drop-after").forEach(x => x.classList.remove("drop-before","drop-after"));
+  if (t && t.dataset.drag !== drag.id) {
+    const r = t.getBoundingClientRect(); drag.after = drag.lx > r.left + r.width / 2; drag.target = t.dataset.drag;
+    t.classList.add(drag.after ? "drop-after" : "drop-before");
+  } else drag.target = null;
+}
+// While dragging a header near the table's left/right edge, keep scrolling (also when the finger holds still)
+function autoScroll(){
+  if (!drag || !drag.active) return;
+  const tw = $(".tablewrap"), r = tw.getBoundingClientRect(), first = $("#tbl thead th");
+  const stick = r.left + (first ? first.getBoundingClientRect().width : 0);
+  let dx = 0;
+  if (drag.lx < stick + 28 && tw.scrollLeft > 0) dx = -8; else if (drag.lx > r.right - 36) dx = 8;
+  if (dx) { tw.scrollLeft += dx; updateDropTarget(true); }
+  drag.raf = requestAnimationFrame(autoScroll);
+}
+document.addEventListener("pointermove", e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  if (!drag.active) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+    if (drag.group === "th" && opts.chainsByValue) { toast('Turn off "Sort chains by value" to arrange columns by hand'); drag = null; return; }
+    drag.active = true; drag.el.classList.add("dragging"); document.body.classList.add("is-dragging");
+    const g = document.createElement("div"); g.className = "dragghost cc"; g.style.cssText = drag.el.getAttribute("style") || "";
+    g.textContent = CHAINS.find(c => c.id === drag.id).name; document.body.appendChild(g); drag.ghost = g;
+  }
+  e.preventDefault();
+  drag.lx = e.clientX; drag.ly = e.clientY;
+  drag.ghost.style.left = e.clientX + 12 + "px"; drag.ghost.style.top = e.clientY + 12 + "px";
+  updateDropTarget();
+  if (drag.group === "th" && !drag.raf) drag.raf = requestAnimationFrame(autoScroll);
+}, {passive: false});
+function endDrag(e, cancel){
+  if (!drag || (e && e.pointerId !== drag.pid)) return;
+  const d = drag; drag = null;
+  if (d.raf) cancelAnimationFrame(d.raf);
+  if (!d.active) return;
+  suppressClick = true; setTimeout(() => suppressClick = false, 50);
+  d.ghost && d.ghost.remove(); document.body.classList.remove("is-dragging");
+  document.querySelectorAll(".dragging,.drop-before,.drop-after").forEach(x => x.classList.remove("dragging","drop-before","drop-after"));
+  if (cancel || !d.target) return;
+  const from = order.indexOf(d.id); let to = order.indexOf(d.target) + (d.after ? 1 : 0);
+  if (from < to) to--;
+  moveChain(d.id, to); toast("Column order saved");
+}
+document.addEventListener("pointerup", e => endDrag(e, false));
+document.addEventListener("pointercancel", e => endDrag(e, true));
+document.addEventListener("click", e => { if (suppressClick) { e.preventDefault(); e.stopPropagation(); suppressClick = false; } }, true);
 
 // ---- Events ----
 $("#refreshBtn").onclick = requestRefresh;
@@ -516,6 +710,24 @@ $("#chainChips").addEventListener("change", e => {
     renderBody(); loadChain(CHAINS.find(c=>c.id===id), wallets.map(w=>w.address), runId);
   } else renderBody();
 });
+$("#tbl thead").addEventListener("click", e => {
+  const th = e.target.closest("th[data-sort]"); if (!th) return;
+  const col = th.dataset.sort;
+  if (col === "orig") opts.sortCol = "orig";
+  else if (opts.sortCol === col) opts.sortDir = opts.sortDir === "desc" ? "asc" : "desc";
+  else { opts.sortCol = col; opts.sortDir = "desc"; }
+  rowOrderCache = null; save(); renderChips(); renderBody();
+});
+$("#chainChips").addEventListener("click", e => {
+  const b = e.target.closest("button[data-move]"); if (!b) return;
+  e.preventDefault();
+  const id = b.dataset.move, i = order.indexOf(id);
+  moveChain(id, i + (+b.dataset.dir));
+  const nb = document.querySelector(`button[data-move="${id}"][data-dir="${b.dataset.dir}"]`); if (nb && !nb.disabled) nb.focus();
+});
+$("#byValue").onchange = e => { opts.chainsByValue = e.target.checked; valueOrderCache = null; save(); render(); };
+$("#resetOrder").onclick = () => { order = CHAINS.map(c => c.id); saveOrder(); render(); toast("Chain order reset"); };
+$("#origOrder").onclick = () => { opts.sortCol = opts.sortCol === "orig" ? "usd" : "orig"; opts.sortDir = "desc"; rowOrderCache = null; save(); render(); };
 $("#totalsToggle").onchange = e => { opts.totals = e.target.checked; save(); renderBody(); };
 $("#hideZero").onchange = e => { opts.hideZero = e.target.checked; save(); renderBody(); };
 $("#addBtn").onclick = () => {
